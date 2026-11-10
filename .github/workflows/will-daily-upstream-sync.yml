@@ -1,0 +1,53 @@
+name: Daily upstream sync (Will)
+
+# Pulls the latest HKUDS/Vibe-Trading changes into this fork every day,
+# then switches off any of the original project's workflows so they never
+# run here or send emails. Only this workflow stays on.
+
+on:
+  schedule:
+    - cron: "7 13 * * *"   # 13:07 UTC = 5:07 AM Pacific (6:07 AM during daylight time)
+  workflow_dispatch: {}      # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync main with HKUDS/Vibe-Trading
+        env:
+          # Optional: add a repo secret named SYNC_PAT (a token with "workflow"
+          # permission) so syncs also succeed on days the original project
+          # changes its own workflow files. Without it, those days fail and
+          # the next day's run retries.
+          GH_TOKEN: ${{ secrets.SYNC_PAT || github.token }}
+        run: |
+          set -e
+          before=$(gh api repos/${{ github.repository }}/commits/main --jq .sha)
+          gh api -X POST repos/${{ github.repository }}/merge-upstream -f branch=main | tee result.json
+          after=$(gh api repos/${{ github.repository }}/commits/main --jq .sha)
+          echo "### Upstream sync" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$before" = "$after" ]; then
+            echo "No new changes from HKUDS/Vibe-Trading today." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Synced \`$before\` → \`$after\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "https://github.com/${{ github.repository }}/compare/$before...$after" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the original project's workflows switched off
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/workflows --paginate \
+            --jq '.workflows[] | select(.state=="active") | select(.path != ".github/workflows/will-daily-upstream-sync.yml") | .id' |
+          while read -r id; do
+            echo "Disabling workflow $id"
+            gh api -X PUT repos/${{ github.repository }}/actions/workflows/$id/disable || true
+          done
