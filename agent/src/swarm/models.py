@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -188,7 +187,6 @@ class SwarmAgentSpec(BaseModel):
         timeout_seconds: Worker timeout in seconds.
         model_name: Override default model; None uses global config.
         max_retries: Maximum retry attempts on failure.
-        evidence_mode: Whether completed upstream reports can supply evidence.
     """
 
     id: str
@@ -200,7 +198,6 @@ class SwarmAgentSpec(BaseModel):
     timeout_seconds: int = 300
     model_name: str | None = None
     max_retries: int = 2
-    evidence_mode: Literal["auto", "upstream"] = "auto"
 
 
 class SwarmTask(BaseModel):
@@ -317,6 +314,7 @@ class SwarmRun(BaseModel):
     created_at: str
     completed_at: str | None = None
     final_report: str | None = None
+    report_is_partial: bool = False
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     cache_read_tokens: int = 0
