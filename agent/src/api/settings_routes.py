@@ -195,10 +195,6 @@ def _settings_store() -> SettingsStore:
     return SettingsStore(host.ENV_PATH, getattr(host, "LEGACY_ENV_PATH", _AGENT_DIR / ".env"), host.ENV_EXAMPLE_PATH)
 
 
-def _read_settings_env_values() -> Dict[str, str]:
-    return _settings_store().read()
-
-
 # ---------------------------------------------------------------------------
 # Response builders
 # ---------------------------------------------------------------------------
@@ -209,7 +205,7 @@ def _build_llm_settings_response(
 ) -> LLMSettingsResponse:
     """Build the public settings payload from dotenv values."""
     host = _host()
-    env_values = values if values is not None else _read_settings_env_values()
+    env_values = values if values is not None else _settings_store().read()
     provider_name = env_values.get("LANGCHAIN_PROVIDER", "openai").strip().lower()
     provider = LLM_PROVIDER_BY_NAME.get(provider_name, LLM_PROVIDER_BY_NAME["openai"])
     api_key = env_values.get(provider.api_key_env or "", "") if provider.api_key_env else ""
@@ -344,7 +340,7 @@ def _build_data_source_settings_response(
 ) -> DataSourceSettingsResponse:
     """Build the public data source settings payload."""
     host = _host()
-    env_values = values if values is not None else _read_settings_env_values()
+    env_values = values if values is not None else _settings_store().read()
     token = env_values.get("TUSHARE_TOKEN", "")
     token_configured = host._is_configured_secret(token, TUSHARE_TOKEN_PLACEHOLDERS)
     gildata = env_values.get("GILDATA_TOKEN", "")
@@ -470,7 +466,7 @@ def register_settings_routes(
                 ),
             )
 
-        current_values = _read_settings_env_values()
+        current_values = _settings_store().read()
         base_url = (
             payload.base_url if payload.base_url is not None else provider.default_base_url
         ).strip()
@@ -534,7 +530,7 @@ def register_settings_routes(
             # Do not use base_url or api_key values supplied by the settings form.
             return await _list_openai_codex_models(provider)
 
-        current_values = _read_settings_env_values()
+        current_values = _settings_store().read()
         requested_base_url = (payload.base_url or "").strip()
         saved_base_url = (
             current_values.get(provider.base_url_env) or provider.default_base_url
@@ -583,7 +579,7 @@ def register_settings_routes(
     async def update_data_source_settings(payload: UpdateDataSourceSettingsRequest):
         """Persist project-local data source credentials and update the running process."""
         host_ref = _host()
-        current_values = _read_settings_env_values()
+        current_values = _settings_store().read()
         updates: Dict[str, str] = {}
 
         if payload.clear_tushare_token:
@@ -643,5 +639,5 @@ def register_settings_routes(
             reset_env_config()
 
         return _build_data_source_settings_response(
-            saved_values if updates else _read_settings_env_values()
+            saved_values if updates else _settings_store().read()
         )

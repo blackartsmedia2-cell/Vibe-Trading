@@ -16,12 +16,7 @@ from src.providers.custom_profiles import CustomProviderStore, STORE_LOCK
 
 AuthDep = Callable[..., Awaitable[Any] | Any]
 _TEST_TTL_S = 300.0
-_PROVIDER_REQUEST_TIMEOUT_S = 60.0
 _TESTS: dict[str, tuple[float, str]] = {}
-
-
-def _build_store() -> CustomProviderStore:
-    return CustomProviderStore()
 
 
 class CustomProviderTestRequest(BaseModel):
@@ -64,7 +59,7 @@ def register_custom_provider_routes(
 ) -> None:
     @app.get("/settings/custom-providers", dependencies=[Depends(require_local_or_auth)])
     def list_custom_providers() -> dict[str, Any]:
-        return {"status": "ok", "providers": _build_store().list_public()}
+        return {"status": "ok", "providers": CustomProviderStore().list_public()}
 
     @app.post("/settings/custom-providers/test", dependencies=[Depends(require_settings_write_auth)])
     async def test_custom_provider(payload: CustomProviderTestRequest) -> dict[str, Any]:
@@ -95,7 +90,7 @@ def register_custom_provider_routes(
                 raise HTTPException(status_code=409, detail="A successful provider test is required before saving")
             try:
                 base_url = _validate_custom_base_url(payload.base_url)
-                profile = _build_store().save(
+                profile = CustomProviderStore().save(
                     profile_id=payload.id,
                     label=payload.label,
                     base_url=base_url,
@@ -112,7 +107,7 @@ def register_custom_provider_routes(
         if not payload.confirm:
             raise HTTPException(status_code=400, detail="Explicit confirmation is required to activate a provider")
         try:
-            return activate_custom_provider(profile_id, store=_build_store(), settings=_settings_store())
+            return activate_custom_provider(profile_id, store=CustomProviderStore(), settings=_settings_store())
         except OSError as exc:
             raise HTTPException(status_code=503, detail="Unable to save settings; check ownership and permissions for ~/.vibe-trading/.env") from exc
         except (RuntimeError, ValueError) as exc:

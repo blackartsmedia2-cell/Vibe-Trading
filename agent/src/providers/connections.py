@@ -58,20 +58,6 @@ def _reject_private_dns_targets(base_url: str) -> None:
             raise ValueError("Provider hostname resolves to a local or private network address")
 
 
-def _provider_async_client(base_url: str) -> httpx.AsyncClient:
-    """Client for the provider test: every direct connection is re-checked.
-
-    The name is resolved again when the request connects, and only to public
-    addresses, so a host that re-resolves after the check above (DNS
-    rebinding) or redirects is still refused. Through a proxy the proxy
-    resolves the name, so the default client is used.
-    """
-    kwargs = {"timeout": _PROVIDER_REQUEST_TIMEOUT_S, "follow_redirects": False}
-    if proxy_applies(base_url):
-        return httpx.AsyncClient(**kwargs)
-    return public_only_async_client(**kwargs)
-
-
 async def _perform_completion_test(*, base_url: str, model: str, api_key: str) -> dict[str, Any]:
     started = time.perf_counter()
     normalized_base_url = _validate_custom_base_url(base_url)
@@ -85,8 +71,10 @@ async def _perform_completion_test(*, base_url: str, model: str, api_key: str) -
         "max_tokens": 32,
         "temperature": 0,
     }
+    # Re-check direct connections at dial time, even after the DNS preflight.
+    client_type = httpx.AsyncClient if proxy_applies(normalized_base_url) else public_only_async_client
     try:
-        async with _provider_async_client(normalized_base_url) as client:
+        async with client_type(timeout=_PROVIDER_REQUEST_TIMEOUT_S, follow_redirects=False) as client:
             response = await client.post(f"{normalized_base_url}/chat/completions", headers=headers, json=body)
             response.raise_for_status()
             payload = response.json()

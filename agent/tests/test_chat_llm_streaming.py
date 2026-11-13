@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.provider_helpers import chat_with_adapter
+
 import os
 import threading
 from typing import Any
@@ -57,15 +59,8 @@ class _FakeStreamingLLM:
         return _FakeChunk(content="fallback")
 
 
-def _client(fake_llm: _FakeStreamingLLM) -> ChatLLM:
-    client = ChatLLM.__new__(ChatLLM)
-    from src.providers.configuration import resolve_config
-    from src.providers.chat import LLMRuntimeSnapshot
-    client.config = resolve_config(environment=dict(os.environ))
-    client.runtime_snapshot = LLMRuntimeSnapshot(client.config.provider, client.config.model, "")
-    client.model_name = "deepseek-v4-pro"
-    client._llm = fake_llm
-    return client
+def _client(fake_llm: _FakeStreamingLLM):
+    return chat_with_adapter(fake_llm, model="deepseek-v4-pro")
 
 
 def test_reasoning_only_chunks_emit_progress_without_final_answer_text() -> None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.provider_helpers import chat_with_adapter
+
 from src.providers import configuration as _provider_configuration
 
 import os
@@ -10,7 +12,6 @@ from unittest.mock import patch
 
 import pytest
 
-import src.providers.llm as llm_mod
 from src.agent.loop import _normalize_llm_usage, _record_llm_usage
 from src.config.accessor import get_env_config, reset_env_config
 from src.providers.chat import ChatLLM, prompt_cache_messages
@@ -122,15 +123,8 @@ class _FakeAnthropicNoStreamLLM(_RecordingLLM):
         return iter(())
 
 
-def _chat_client(fake) -> ChatLLM:
-    client = ChatLLM.__new__(ChatLLM)
-    from src.providers.configuration import resolve_config
-    from src.providers.chat import LLMRuntimeSnapshot
-    client.config = resolve_config(environment=dict(os.environ))
-    client.runtime_snapshot = LLMRuntimeSnapshot(client.config.provider, client.config.model, "")
-    client.model_name = "m"
-    client._llm = fake
-    return client
+def _chat_client(fake):
+    return chat_with_adapter(fake, model="m")
 
 
 _CACHE_KWARGS = {"cache_control": {"type": "ephemeral"}}

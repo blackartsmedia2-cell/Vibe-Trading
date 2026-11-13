@@ -32,7 +32,7 @@ class _MemoryCredentials:
 @pytest.fixture()
 def custom_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> CustomProviderStore:
     store = CustomProviderStore(tmp_path / "custom-providers.json", _MemoryCredentials())
-    monkeypatch.setattr(custom_provider_routes, "_build_store", lambda: store)
+    monkeypatch.setattr(custom_provider_routes, "CustomProviderStore", lambda: store)
     return store
 
 
@@ -272,7 +272,8 @@ def test_real_completion_transport_redacts_key_and_sends_expected_request(monkey
         seen.append(request)
         return httpx.Response(200, json={"choices": [{"message": {"content": "OK synthetic-secret"}}]})
     monkeypatch.setattr(connections, "_reject_private_dns_targets", lambda _: None)
-    monkeypatch.setattr(connections, "_provider_async_client", lambda _url: actual_client(transport=httpx.MockTransport(handle)))
+    monkeypatch.setattr(connections, "proxy_applies", lambda _: False)
+    monkeypatch.setattr(connections, "public_only_async_client", lambda **kw: actual_client(transport=httpx.MockTransport(handle), **kw))
     result = asyncio.run(custom_provider_routes._perform_completion_test(base_url="https://example.test/v1", model="demo", api_key="synthetic-secret"))
     assert result["response_preview"] == "OK [redacted]"
     assert str(seen[0].url) == "https://example.test/v1/chat/completions"

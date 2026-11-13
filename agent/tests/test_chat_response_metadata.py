@@ -1,4 +1,5 @@
-import os
+from tests.provider_helpers import chat_with_adapter
+
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 
@@ -81,7 +82,6 @@ def test_a_model_named_in_several_stream_chunks_is_not_doubled() -> None:
     the strings and the chat bar showed "deepseek/deepseek-v4-prodeepseek/deepseek-v4-pro".
     """
     from langchain_core.messages import AIMessageChunk
-    from src.providers.chat import ChatLLM
 
     class Provider:
         def bind_tools(self, tools):
@@ -94,16 +94,7 @@ def test_a_model_named_in_several_stream_chunks_is_not_doubled() -> None:
                 content="lo", response_metadata={**meta, "finish_reason": "stop"}
             )
 
-    llm = ChatLLM.__new__(ChatLLM)
-
-    from src.providers.configuration import resolve_config
-
-    from src.providers.chat import LLMRuntimeSnapshot
-
-    llm.config = resolve_config(environment=dict(os.environ))
-
-    llm.runtime_snapshot = LLMRuntimeSnapshot(llm.config.provider, llm.config.model, "")
-    llm._llm, llm.model_name = Provider(), "deepseek/deepseek-v4-pro"
+    llm = chat_with_adapter(Provider(), model="deepseek/deepseek-v4-pro")
     response = llm.stream_chat(
         [{"role": "user", "content": "hi"}], on_text_chunk=lambda _: None
     )

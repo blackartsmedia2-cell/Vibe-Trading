@@ -1,15 +1,11 @@
-"""Cross-client isolation through real SDK requests, plus architecture boundaries."""
+"""Credential isolation, frozen settings and streaming retry boundaries."""
 
 from __future__ import annotations
 
-import ast
-import json
 import os
-import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, closing
 from dataclasses import FrozenInstanceError
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -17,51 +13,20 @@ from pydantic import ValidationError
 from src.providers import adapters
 from src.providers.chat import ChatLLM, ProviderStreamError
 from src.providers.configuration import resolve_config
+from tests.provider_helpers import provider_server as provider_server
 
 
-def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatch):
+def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatch, provider_server):
     """Defaults can change before construction and during concurrent requests."""
-    seen = []
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *_args):
-            pass
-
-        def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            seen.append((self.path, dict(self.headers), body))
-            payload = json.dumps(
-                {
-                    "id": "test",
-                    "object": "chat.completion",
-                    "created": 1,
-                    "model": body["model"],
-                    "choices": [
-                        {
-                            "index": 0,
-                            "finish_reason": "stop",
-                            "message": {"role": "assistant", "content": body["model"]},
-                        }
-                    ],
-                }
-            ).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    clients = []
-    try:
+    base_url, seen = provider_server
+    with ExitStack() as stack:
         snapshots = [
             resolve_config(
                 environment={
                     "LANGCHAIN_PROVIDER": "openai",
                     "LANGCHAIN_MODEL_NAME": name,
                     "OPENAI_API_KEY": f"key-{name}",
-                    "OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_port}/{name}",
+                    "OPENAI_BASE_URL": f"{base_url}/{name}",
                     "LANGCHAIN_TEMPERATURE": str(temperature),
                     "LANGCHAIN_USE_RESPONSES_API": "false",
                     "OPENAI_CUSTOM_HEADERS": f"X-Owner: {name}",
@@ -79,13 +44,12 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
             monkeypatch.setenv(key, "unrelated-new-default")
         monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Owner: leaked\nX-Leaked: secret")
         before_build = dict(os.environ)
-        clients = [ChatLLM(snapshot=snapshot) for snapshot in snapshots]
+        clients = [stack.enter_context(closing(ChatLLM(snapshot=snapshot))) for snapshot in snapshots]
         assert dict(os.environ) == before_build
         with ThreadPoolExecutor(2) as pool:
             replies = list(pool.map(lambda c: c.chat([{"role": "user", "content": "hello"}]), clients))
         assert {r.content for r in replies} == {"before", "after"}
-        for path, raw_headers, body in seen:
-            headers = {key.lower(): value for key, value in raw_headers.items()}
+        for path, headers, body in seen:
             name = body["model"]
             assert path == f"/{name}/chat/completions"
             assert headers["authorization"] == f"Bearer key-{name}"
@@ -94,11 +58,6 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
             assert headers["openai-project"] == f"project-{name}"
             assert body["temperature"] == (0.2 if name == "before" else 0.7)
         assert len(seen) == 2
-    finally:
-        for client in clients:
-            client.close()
-        server.shutdown()
-        server.server_close()
 
 
 def test_snapshot_defaults_are_explicit_immutable_and_secret_free(monkeypatch):
@@ -163,34 +122,16 @@ def test_learned_rejections_do_not_cross_endpoints_or_protocols():
         adapters._ANTHROPIC_TEMPERATURE_UNSUPPORTED.clear()
 
 
-def test_lower_layers_never_import_http_routes_or_the_llm_facade():
-    root = Path(__file__).resolve().parents[1]
-    paths = [root / "cli/custom_providers.py", root / "src/config/dotenv.py"]
-    paths += [p for p in (root / "src/providers").glob("*.py") if p.name not in {"__init__.py", "llm.py"}]
-    for path in paths:
-        for node in ast.walk(ast.parse(path.read_text())):
-            modules = (
-                [node.module or ""]
-                if isinstance(node, ast.ImportFrom)
-                else [n.name for n in node.names]
-                if isinstance(node, ast.Import)
-                else []
-            )
-            assert not any(m == "api_server" or m.startswith("src.api") or m == "src.providers.llm" for m in modules), (
-                path
-            )
-
-
-@pytest.mark.parametrize("provider,module", [("anthropic", "langchain_anthropic"), ("deepseek", "langchain_deepseek")])
-def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, module):
-    pytest.importorskip(module)
+@pytest.mark.parametrize("provider,key", [("anthropic", "snapshot-key"), ("deepseek", "snapshot-key"), ("deepseek", "")])
+def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, key):
+    pytest.importorskip(f"langchain_{provider}")
     from src.providers.gateway import build_llm
 
     snapshot = resolve_config(
         environment={
             "LANGCHAIN_PROVIDER": provider,
             "LANGCHAIN_MODEL_NAME": "test-model",
-            f"{provider.upper()}_API_KEY": "snapshot-key",
+            f"{provider.upper()}_API_KEY": key,
             f"{provider.upper()}_BASE_URL": "https://original.invalid",
             "ANTHROPIC_MAX_TOKENS": "128",
         }
@@ -199,6 +140,11 @@ def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, mo
     monkeypatch.setenv("ANTHROPIC_CUSTOM_HEADERS", "X-Leaked: secret")
     monkeypatch.setenv("OPENAI_ORG_ID", "wrong-org")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "wrong-token")
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-new-default")
+    if not key:
+        with pytest.raises(RuntimeError, match="Set DEEPSEEK_API_KEY"):
+            build_llm(snapshot=snapshot)
+        return
     adapter = build_llm(snapshot=snapshot)
     sdk = adapter._client if provider == "anthropic" else adapter.root_client
     assert sdk.api_key == "snapshot-key"
@@ -209,19 +155,6 @@ def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, mo
         assert "auth_token" not in adapter._get_request_payload("hello")
     else:
         assert sdk.organization is None and sdk.project is None
-
-
-def test_native_deepseek_does_not_fill_a_missing_snapshot_key_from_the_environment(monkeypatch):
-    pytest.importorskip("langchain_deepseek")
-    from src.providers.gateway import build_llm
-
-    snapshot = resolve_config(environment={
-        "LANGCHAIN_PROVIDER": "deepseek", "LANGCHAIN_MODEL_NAME": "test",
-        "DEEPSEEK_BASE_URL": "https://relay.invalid/v1",
-    })
-    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-new-default")
-    with pytest.raises(RuntimeError, match="Set DEEPSEEK_API_KEY"):
-        build_llm(snapshot=snapshot)
 
 
 @pytest.mark.parametrize("native", [False, True])

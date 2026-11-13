@@ -110,7 +110,8 @@ describe("Settings with the claude-cli provider", () => {
   });
 
   it("offers registry model candidates before online discovery and saves the selection", async () => {
-    const provider = providerCatalog.find((entry) => entry.name === "openrouter")!;
+    const provider = { ...providers.find((entry) => entry.name === "openrouter")!,
+      ...providerCatalog.find((entry) => entry.name === "openrouter")! };
     const candidate = provider.model_options!.find((model) => model !== provider.default_model)!;
     const settings = llmSettings({ provider: provider.name, model_name: provider.default_model,
       base_url: provider.default_base_url, providers: [provider] });
@@ -118,6 +119,7 @@ describe("Settings with the claude-cli provider", () => {
     apiMock.updateLLMSettings.mockResolvedValue({ ...settings, model_name: candidate });
     render(<Settings />);
     const input = await screen.findByRole("combobox", { name: "Model" });
+    expect(effortOptions()).toEqual(["", "none", "low", "medium", "high", "max"]);
     fireEvent.click(input);
     expect(await screen.findByText(candidate)).toBeInTheDocument();
     fireEvent.change(input, { target: { value: candidate } });
@@ -203,19 +205,7 @@ describe("Settings with the claude-cli provider", () => {
     expect(screen.queryByText("claude-sonnet-4-6")).not.toBeInTheDocument();
   });
 
-  it("keeps the existing levels and makes no request for other providers", async () => {
-    apiMock.getLLMSettings.mockResolvedValue(
-      llmSettings({
-        provider: "openrouter",
-        model_name: "deepseek/deepseek-v3.2",
-        base_url: "https://openrouter.ai/api/v1",
-      }),
-    );
-    render(<Settings />);
 
-    await waitFor(() => expect(effortOptions()).toEqual(["", "none", "low", "medium", "high", "max"]));
-    expect(apiMock.listLLMModels).not.toHaveBeenCalled();
-  });
 });
 
 

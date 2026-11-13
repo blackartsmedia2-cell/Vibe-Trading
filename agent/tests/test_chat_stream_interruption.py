@@ -8,7 +8,8 @@ and stopping really closes the stream rather than abandoning a thread.
 """
 
 from __future__ import annotations
-import os
+
+from tests.provider_helpers import chat_with_adapter
 
 import threading
 import time
@@ -16,7 +17,6 @@ from typing import Any
 
 import pytest
 
-from src.providers.chat import ChatLLM
 
 
 class _Chunk:
@@ -78,15 +78,8 @@ class _FakeLLM:
         return _Chunk("fallback")
 
 
-def _client(stream: _SilentStream) -> ChatLLM:
-    client = ChatLLM.__new__(ChatLLM)
-    from src.providers.configuration import resolve_config
-    from src.providers.chat import LLMRuntimeSnapshot
-    client.config = resolve_config(environment=dict(os.environ))
-    client.runtime_snapshot = LLMRuntimeSnapshot(client.config.provider, client.config.model, "")
-    client.model_name = "fake"
-    client._llm = _FakeLLM(stream)
-    return client
+def _client(stream: _SilentStream):
+    return chat_with_adapter(_FakeLLM(stream), model="fake")
 
 
 def test_idle_timeout_interrupts_a_silent_stream() -> None:
