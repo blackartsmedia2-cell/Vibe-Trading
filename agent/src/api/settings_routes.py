@@ -37,13 +37,15 @@ _AGENT_DIR = Path(__file__).resolve().parent.parent.parent
 
 # "none" is an explicit value direct OpenAI needs to allow function tools on
 # gpt-5.6-* models; a provider with its own levels lists them in llm_providers.json.
-DEFAULT_REASONING_EFFORTS = ("none", "low", "medium", "high", "max")
+from src.providers.registry import CATALOG_PATH, DEFAULT_REASONING_EFFORTS, provider_catalog
 
 
 class LLMProviderOption(BaseModel):
     """Supported LLM provider metadata for the settings UI."""
 
     name: str
+    backend: str = "openai_compatible"
+    automatic_model_list: bool = False
     label: str
     api_key_env: Optional[str] = None
     base_url_env: str
@@ -171,25 +173,12 @@ class UpdateDataSourceSettingsRequest(BaseModel):
 # Provider metadata (settings-exclusive)
 # ---------------------------------------------------------------------------
 
-LLM_PROVIDER_CONFIG_PATH = _AGENT_DIR / "src" / "providers" / "llm_providers.json"
+LLM_PROVIDER_CONFIG_PATH = CATALOG_PATH
 
 
 def _load_llm_providers() -> List[LLMProviderOption]:
-    """Load provider metadata from JSON so additions stay data-driven."""
-    try:
-        raw = json.loads(LLM_PROVIDER_CONFIG_PATH.read_text(encoding="utf-8"))
-        providers = [LLMProviderOption(**item) for item in raw]
-    except Exception as exc:
-        raise RuntimeError(f"Failed to load LLM provider config: {LLM_PROVIDER_CONFIG_PATH}") from exc
-
-    seen: set[str] = set()
-    for provider in providers:
-        if provider.name in seen:
-            raise RuntimeError(f"Duplicate LLM provider name: {provider.name}")
-        seen.add(provider.name)
-    if not providers:
-        raise RuntimeError("LLM provider config must not be empty")
-    return providers
+    """Expose the same catalog used by the in-process gateway and CLI."""
+    return [LLMProviderOption(**item) for item in provider_catalog()]
 
 
 LLM_PROVIDERS = _load_llm_providers()

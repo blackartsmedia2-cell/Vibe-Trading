@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
 from threading import Lock
 from time import monotonic
 from typing import Mapping, Optional
@@ -105,183 +103,22 @@ def _gh_cli_token() -> str:
         return token
 
 
-# Moonshot publishes a top-level ``reasoning_effort`` (low/high/max only —
-# there is no medium/minimal) for the kimi-k3.1 model family on its chat
-# completions endpoint: https://platform.kimi.ai/docs/guide/use-reasoning-effort.md
-# Enabled per published contract; live endpoint verification pending (no
-# Moonshot key available to contributor) — issue #2020. The model tuple scopes
-# the flag to kimi-k3.1*, and ``llm.py`` additionally gates on the official
-# api.moonshot.ai host, so a relayed ``MOONSHOT_BASE_URL`` receives nothing.
-# The "kimi" alias shares this record; kimi-coding serves a different endpoint
-# and stays off the allowlist.
-_MOONSHOT_CAPABILITIES = ProviderCapabilities(
-    "moonshot",
-    "MOONSHOT_API_KEY",
-    "MOONSHOT_BASE_URL",
-    capture_reasoning=True,
-    send_reasoning_content=True,
-    normalize_assistant_content=True,
-    top_level_reasoning_effort=True,
-    reasoning_effort_models=("kimi-k3.1-pro",),
-    default_headers={"User-Agent": _VIBE_USER_AGENT},
-)
+# Catalog flags preserve the existing protocol contracts: top-level reasoning
+# remains opt-in; Moonshot model/endpoint checks stay in the adapter; opaque
+# reasoning and thought-signature fields still round-trip only where declared.
+from src.providers.registry import capability_records, provider_catalog
 
-# Kimi for Coding subscription plan. Same wire behavior as Moonshot's open
-# platform, but with a distinct endpoint/model and key namespace.
-_KIMI_CODING_CAPABILITIES = ProviderCapabilities(
-    "kimi-coding",
-    "KIMI_CODING_API_KEY",
-    "KIMI_CODING_BASE_URL",
-    capture_reasoning=True,
-    send_reasoning_content=True,
-    normalize_assistant_content=True,
-    default_headers={"User-Agent": _VIBE_USER_AGENT},
-)
-
-_NVIDIA_CAPABILITIES = ProviderCapabilities(
-    "nvidia",
-    "NVIDIA_API_KEY",
-    "NVIDIA_BASE_URL",
-    default_headers={"User-Agent": _VIBE_USER_AGENT},
-)
+def _catalog_capabilities() -> dict[str, ProviderCapabilities]:
+    """Build capability records, retaining identity for canonical aliases."""
+    records: dict[str, ProviderCapabilities] = {}
+    for name, values in capability_records(_VIBE_USER_AGENT).items():
+        caps = ProviderCapabilities(**values)
+        canonical = records.get(caps.name)
+        records[name] = canonical if canonical == caps else caps
+    return records
 
 
-# OpenCode Go / Zen relay (opencode.ai). Speaks the OpenAI wire format and
-# serves DeepSeek/GLM/Kimi models that stream ``reasoning_content``. OpenCode
-# Go additionally requires a stable per-conversation ``x-opencode-session``
-# header (400 ``MissingSessionID`` without it); that value depends on the
-# active session and is injected at request time in ``llm.py``. The
-# User-Agent is the client identification the service asks for.
-_OPENCODE_CAPABILITIES = ProviderCapabilities(
-    "opencode",
-    "OPENCODE_API_KEY",
-    "OPENCODE_BASE_URL",
-    capture_reasoning=True,
-    default_headers={"User-Agent": _VIBE_USER_AGENT},
-)
-
-# GLM thinking models (glm-4.5+/glm-5.x) stream the chain-of-thought as
-# ``reasoning_content`` with the final answer in ``content``. Capture the
-# reasoning like DeepSeek; do NOT replay it on assistant turns —
-# ``send_reasoning_content`` stays off until verified live against bigmodel
-# (DeepSeek rejects replayed reasoning; zhipu is unconfirmed). See #458.
-_ZHIPU_CAPABILITIES = ProviderCapabilities(
-    "zhipu",
-    "ZHIPU_API_KEY",
-    "ZHIPU_BASE_URL",
-    capture_reasoning=True,
-)
-
-# iFlytek Spark's HTTP endpoint is plain OpenAI-compatible (Bearer APIPassword);
-# the v1 chat path exposes no reasoning fields, so no capability flags are set.
-_SPARK_CAPABILITIES = ProviderCapabilities(
-    "spark",
-    "SPARK_API_KEY",
-    "SPARK_BASE_URL",
-)
-
-_OPENAI_CODEX_CAPABILITIES = ProviderCapabilities("openai-codex", None, "OPENAI_CODEX_BASE_URL")
-
-# GitHub Copilot is routed through the official SDK in ``build_llm``.
-_COPILOT_CAPABILITIES = ProviderCapabilities(
-    "copilot",
-    "COPILOT_GITHUB_TOKEN",
-    "COPILOT_BASE_URL",
-)
-
-
-# The local Claude Code CLI is driven as a subprocess in ``build_llm``; it has
-# no HTTP endpoint or key of its own. The base-URL variable is never read — the
-# settings UI requires one per provider.
-_CLAUDE_CLI_CAPABILITIES = ProviderCapabilities("claude-cli", None, "CLAUDE_CLI_BASE_URL")
-
-
-_PROVIDERS: dict[str, ProviderCapabilities] = {
-    # ``gpt-5.6-*`` reject function tools on /v1/chat/completions unless the
-    # request carries an explicit ``reasoning_effort`` — including the literal
-    # "none" — so this one is required, not merely accepted. Still gated on the
-    # base URL at the call site: pointing OPENAI_BASE_URL at Ollama, LiteLLM or
-    # a corporate proxy keeps the label while changing who answers.
-    "openai": ProviderCapabilities(
-        "openai",
-        "OPENAI_API_KEY",
-        "OPENAI_BASE_URL",
-        top_level_reasoning_effort=True,
-    ),
-    "anthropic": ProviderCapabilities(
-        "anthropic",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_BASE_URL",
-        native_adapter_package="langchain-anthropic",
-    ),
-    "openrouter": ProviderCapabilities(
-        "openrouter",
-        "OPENROUTER_API_KEY",
-        "OPENROUTER_BASE_URL",
-        capture_reasoning=True,
-        openrouter_reasoning_body=True,
-    ),
-    # Verified live against DeepSeek Flash in #1025: a chat-completions request
-    # carrying top-level ``reasoning_effort`` came back with reasoning content
-    # and non-zero reasoning usage.
-    "deepseek": ProviderCapabilities(
-        "deepseek",
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        capture_reasoning=True,
-        top_level_reasoning_effort=True,
-        native_adapter_package="langchain-deepseek",
-    ),
-    "siliconflow-cn": ProviderCapabilities(
-        "siliconflow-cn",
-        "SILICONFLOW_API_KEY",
-        "SILICONFLOW_BASE_URL",
-    ),
-    "siliconflow-global": ProviderCapabilities(
-        "siliconflow-global",
-        "SILICONFLOW_GLOBAL_API_KEY",
-        "SILICONFLOW_GLOBAL_BASE_URL",
-    ),
-    "nvidia": _NVIDIA_CAPABILITIES,
-    "nvidia-nim": _NVIDIA_CAPABILITIES,
-    "gemini": ProviderCapabilities(
-        "gemini",
-        "GEMINI_API_KEY",
-        "GEMINI_BASE_URL",
-        gemini_thought_signatures=True,
-    ),
-    "groq": ProviderCapabilities("groq", "GROQ_API_KEY", "GROQ_BASE_URL"),
-    # Novita AI is an OpenAI-compatible inference cloud using ``vendor/model``
-    # naming. The v1 chat path exposes no reasoning fields, so no capability
-    # flags are set and it rides the generic OpenAI-compatible path.
-    "novita": ProviderCapabilities("novita", "NOVITA_API_KEY", "NOVITA_BASE_URL"),
-    "dashscope": ProviderCapabilities("dashscope", "DASHSCOPE_API_KEY", "DASHSCOPE_BASE_URL"),
-    "qwen": ProviderCapabilities("qwen", "DASHSCOPE_API_KEY", "DASHSCOPE_BASE_URL"),
-    "zhipu": _ZHIPU_CAPABILITIES,
-    "glm": _ZHIPU_CAPABILITIES,
-    "moonshot": _MOONSHOT_CAPABILITIES,
-    "kimi": _MOONSHOT_CAPABILITIES,
-    "kimi-coding": _KIMI_CODING_CAPABILITIES,
-    "minimax": ProviderCapabilities("minimax", "MINIMAX_API_KEY", "MINIMAX_BASE_URL"),
-    "mimo": ProviderCapabilities("mimo", "MIMO_API_KEY", "MIMO_BASE_URL"),
-    "spark": _SPARK_CAPABILITIES,
-    "iflytek": _SPARK_CAPABILITIES,
-    "zai": ProviderCapabilities("zai", "ZAI_API_KEY", "ZAI_BASE_URL"),
-    "modelscope": ProviderCapabilities(
-        "modelscope",
-        "MODELSCOPE_API_KEY",
-        "MODELSCOPE_BASE_URL",
-    ),
-    "ollama": ProviderCapabilities("ollama", None, "OLLAMA_BASE_URL"),
-    "copilot": _COPILOT_CAPABILITIES,
-    "github-copilot": _COPILOT_CAPABILITIES,
-    "claude-cli": _CLAUDE_CLI_CAPABILITIES,
-    "openai-codex": _OPENAI_CODEX_CAPABILITIES,
-    "openai_codex": _OPENAI_CODEX_CAPABILITIES,
-    "opencode": _OPENCODE_CAPABILITIES,
-    "opencode-zen": ProviderCapabilities("opencode-zen", "OPENAI_API_KEY", "OPENAI_BASE_URL"),
-    "opencode-go": ProviderCapabilities("opencode-go", "OPENAI_API_KEY", "OPENAI_BASE_URL"),
-}
+_PROVIDERS = _catalog_capabilities()
 
 
 def _infer_from_model(model: str) -> str | None:
@@ -348,9 +185,6 @@ def provider_env_names(provider: str | None, model: str | None = None) -> tuple[
     return caps.api_key_env, caps.base_url_env
 
 
-_PROVIDER_CATALOG_PATH = Path(__file__).with_name("llm_providers.json")
-
-
 @lru_cache(maxsize=1)
 def _provider_default_base_urls() -> dict[str, str]:
     """Canonical ``name -> default_base_url`` map from the provider catalog.
@@ -362,11 +196,7 @@ def _provider_default_base_urls() -> dict[str, str]:
     Z.ai's ``/api/coding/paas/v4``) instead of silently defaulting to
     ``api.openai.com`` and getting a 404 for a non-OpenAI model.
     """
-    try:
-        raw = json.loads(_PROVIDER_CATALOG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    entries = raw if isinstance(raw, list) else raw.get("providers", [])
+    entries = provider_catalog()
     result: dict[str, str] = {}
     for entry in entries:
         if not isinstance(entry, dict):

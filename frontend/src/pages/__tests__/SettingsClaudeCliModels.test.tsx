@@ -1,3 +1,4 @@
+import providerCatalog from "../../../../agent/src/providers/llm_providers.json";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Settings } from "../Settings";
 
@@ -106,6 +107,35 @@ describe("Settings with the claude-cli provider", () => {
       env_path: "agent/.env",
     });
     apiMock.listLLMModels.mockResolvedValue(modelList);
+  });
+
+  it("offers registry model candidates before online discovery and saves the selection", async () => {
+    const provider = providerCatalog.find((entry) => entry.name === "openrouter")!;
+    const candidate = provider.model_options!.find((model) => model !== provider.default_model)!;
+    const settings = llmSettings({ provider: provider.name, model_name: provider.default_model,
+      base_url: provider.default_base_url, providers: [provider] });
+    apiMock.getLLMSettings.mockResolvedValue(settings);
+    apiMock.updateLLMSettings.mockResolvedValue({ ...settings, model_name: candidate });
+    render(<Settings />);
+    const input = await screen.findByRole("combobox", { name: "Model" });
+    fireEvent.click(input);
+    expect(await screen.findByText(candidate)).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: candidate } });
+    fireEvent.click(effortSelect().closest("form")!.querySelector('button[type="submit"]')!);
+    await waitFor(() => expect(apiMock.updateLLMSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: provider.name, model_name: candidate,
+        base_url: provider.default_base_url }),
+    ));
+    expect(apiMock.listLLMModels).not.toHaveBeenCalled();
+  });
+
+  it("honors registry discovery policy without guessing from the provider name", async () => {
+    apiMock.getLLMSettings.mockResolvedValue(llmSettings({
+      providers: providers.map((provider) => ({ ...provider, automatic_model_list: false })),
+    }));
+    render(<Settings />);
+    await screen.findByRole("combobox", { name: "Model" });
+    expect(apiMock.listLLMModels).not.toHaveBeenCalled();
   });
 
   it("loads the CLI model list on open and offers the selected model's levels", async () => {

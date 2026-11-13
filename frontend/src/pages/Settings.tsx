@@ -78,6 +78,7 @@ export function Settings() {
           setModelOptions(Array.from(new Set([
             llmResult.value.model_name,
             llmResult.value.providers.find((provider) => provider.name === llmResult.value.provider)?.default_model ?? "",
+            ...(llmResult.value.providers.find((provider) => provider.name === llmResult.value.provider)?.model_options ?? []),
           ].filter(Boolean))));
         } else {
           const message = llmResult.reason instanceof Error
@@ -128,7 +129,7 @@ export function Settings() {
       model_name: provider.default_model,
       base_url: provider.default_base_url,
     });
-    setModelOptions([provider.default_model]);
+    setModelOptions(Array.from(new Set([provider.default_model, ...(provider.model_options ?? [])])));
     setModelListHint(null);
     setEffortLevelsByModel(null);
     setModelLabels({});
@@ -146,7 +147,7 @@ export function Settings() {
     });
     setApiKey("");
     setClearApiKey(false);
-    setModelOptions([provider.default_model]);
+    setModelOptions(Array.from(new Set([provider.default_model, ...(provider.model_options ?? [])])));
     setModelListHint(null);
     setEffortLevelsByModel(null);
     setModelLabels({});
@@ -174,6 +175,7 @@ export function Settings() {
       setModelOptions(Array.from(new Set([
         form.model_name,
         selectedProvider.default_model,
+        ...(selectedProvider.model_options ?? []),
         ...result.models,
       ].filter(Boolean))));
       setEffortLevelsByModel(result.effort_levels ?? null);
@@ -199,8 +201,8 @@ export function Settings() {
 
   // The CLI reports which models the login can run and the levels each accepts,
   // so fetch that as soon as the provider is shown rather than on a button press.
-  const hasAutomaticModelList = selectedProvider?.auth_type === "claude_cli"
-    || selectedProvider?.name === "openai-codex";
+  const hasAutomaticModelList = selectedProvider?.automatic_model_list
+    ?? (selectedProvider?.auth_type === "claude_cli" || selectedProvider?.name === "openai-codex");
   useEffect(() => {
     if (hasAutomaticModelList) void refreshModels({ refresh: false });
     // refreshModels reads the form at call time; re-run only when the provider changes.

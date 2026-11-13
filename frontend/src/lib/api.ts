@@ -1051,6 +1051,9 @@ export interface SwarmRunSummary {
 }
 
 export interface LLMProviderOption {
+  backend?: string;
+  automatic_model_list?: boolean;
+  model_options?: string[];
   name: string;
   label: string;
   api_key_env?: string | null;

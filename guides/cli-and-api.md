@@ -12,6 +12,7 @@ vibe-trading alpha list    # browse 478 pre-built alphas; show / bench / compare
 vibe-trading playbook list # five scheduled-research templates; show / create sub-commands available
 vibe-trading channels status --local  # inspect IM channel config and install hints
 vibe-trading provider doctor  # print redacted provider/proxy/package diagnostics
+vibe-trading provider list    # shared provider catalog as JSON (no credentials)
 ```
 
 <details>
@@ -246,7 +247,9 @@ Generated backtest code runs as a local Python subprocess and can make network r
 
 ### Web UI Settings
 
-The Web UI Settings page lets local users update the LLM provider/model, base URL, generation parameters, reasoning effort, and optional market data credentials such as the Tushare token. Settings are persisted to `agent/.env`; provider defaults are loaded from `agent/src/providers/llm_providers.json`.
+The Web UI Settings page lets local users update the LLM provider/model, base URL, generation parameters, reasoning effort, and optional market data credentials such as the Tushare token. Settings are persisted to `~/.vibe-trading/.env` (with migration from the legacy `agent/.env`); provider defaults are loaded from `agent/src/providers/llm_providers.json`. The same registry supplies CLI setup, first-launch onboarding, runtime capabilities and adapter selection. Web Settings offers the registry's model candidates before online discovery. Existing environment variables, custom-provider vault storage and provider-specific compatibility behavior remain supported.
+
+The LLM gateway runs inside the application process: `ChatLLM` → `build_llm` → `gateway.resolve_route` → adapter factory. It adds no HTTP service or automatic cross-provider fallback. `vibe-trading provider list` exposes the shared catalog; `provider doctor` includes the selected backend. An ordinary OpenAI-compatible provider is declared in the catalog with its connection fields, optional capability flags, and setup/onboarding presentation metadata; a new protocol still needs an adapter and compatibility tests.
 
 Settings reads are side-effect free: `GET /settings/llm` and `GET /settings/data-sources` never create `agent/.env`, and they only return project-relative paths. Settings reads and writes can expose credential state or update credentials/runtime environment, so they require `API_AUTH_KEY` when configured. If `API_AUTH_KEY` is unset for dev mode, settings access is accepted only from loopback clients.
 

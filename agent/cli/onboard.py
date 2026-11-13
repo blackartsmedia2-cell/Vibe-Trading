@@ -31,7 +31,7 @@ CANCEL = object()
 
 
 # ---------------------------------------------------------------------------
-# Provider catalogue — mirrors _PROVIDER_CHOICES in cli/_legacy.py
+# Provider catalogue — projected from the shared provider registry
 # ---------------------------------------------------------------------------
 
 
@@ -50,59 +50,9 @@ class Provider:
     suggested_models: tuple[str, ...]
 
 
-PROVIDERS: Final[tuple[Provider, ...]] = (
-    Provider("openrouter", "OpenRouter", "recommended — 200+ models, one key",
-             "deepseek/deepseek-v4-pro",
-             "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
-             "https://openrouter.ai/api/v1", "sk-or-",
-             ("deepseek/deepseek-v4-pro", "deepseek/deepseek-v4.1-flash",
-              "openai/gpt-5.5-pro", "google/gemini-3.5-flash")),
-    Provider("openai", "OpenAI", "GPT-5.5 direct",
-             "gpt-5.5", "OPENAI_API_KEY", "OPENAI_BASE_URL",
-             "https://api.openai.com/v1", "sk-",
-             ("gpt-5.5", "gpt-5.5-pro", "gpt-5.5-instant")),
-    Provider("anthropic", "Anthropic", "Anthropic Messages API or compatible proxy",
-             "claude-sonnet-4-6", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
-             "https://api.anthropic.com", None,
-             ("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5")),
-    Provider("openai-codex", "OpenAI Codex", "ChatGPT OAuth for Codex",
-             "openai-codex/gpt-6-sol", None, "OPENAI_CODEX_BASE_URL",
-             "https://chatgpt.com/backend-api/codex/responses", None,
-             ("openai-codex/gpt-6-sol", "openai-codex/gpt-6-astra", "openai-codex/gpt-6-luna")),
-    Provider("deepseek", "DeepSeek",
-             "cheapest tier — good for batch backtest research",
-             "deepseek-v4-pro", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL",
-             "https://api.deepseek.com/v1", "sk-",
-             ("deepseek-v4-pro", "deepseek-flash")),
-    Provider("opencode", "OpenCode", "Go / Zen relay — DeepSeek, GLM, Kimi, Qwen under one key",
-             "deepseek-v4.1-flash", "OPENCODE_API_KEY", "OPENCODE_BASE_URL",
-             "https://opencode.ai/zen/go/v1", "sk-",
-             ("deepseek-v4.1-flash", "deepseek-v4-pro", "glm-5.3-flash")),
-    Provider("siliconflow-cn", "SiliconFlow (CN)", "OpenAI-compatible MaaS endpoint in China",
-             "deepseek-ai/DeepSeek-V3.1-Terminus",
-             "SILICONFLOW_API_KEY", "SILICONFLOW_BASE_URL",
-             "https://api.siliconflow.cn/v1", "sk-",
-             ("deepseek-ai/DeepSeek-V3.1-Terminus",)),
-    Provider("siliconflow-global", "SiliconFlow (Global)", "OpenAI-compatible global MaaS endpoint",
-             "deepseek-ai/DeepSeek-V3.1-Terminus",
-             "SILICONFLOW_GLOBAL_API_KEY", "SILICONFLOW_GLOBAL_BASE_URL",
-             "https://api.siliconflow.com/v1", "sk-",
-             ("deepseek-ai/DeepSeek-V3.1-Terminus",)),
-    Provider("modelscope", "ModelScope", "Alibaba's OpenAI-compatible MaaS platform",
-             "Qwen/Qwen3.5-27B",
-             "MODELSCOPE_API_KEY", "MODELSCOPE_BASE_URL",
-             "https://api-inference.modelscope.cn/v1", None,
-             ("Qwen/Qwen3.5-27B", "Qwen/Qwen3.5-397B-A17B", "Qwen/Qwen3-235B-A22B")),
-    Provider("nvidia", "NVIDIA NIM", "hosted NVIDIA API catalog",
-             "nvidia/nemotron-3-ultra-550b-a55b",
-             "NVIDIA_API_KEY", "NVIDIA_BASE_URL",
-             "https://integrate.api.nvidia.com/v1", "nvapi-",
-             ("nvidia/nemotron-3-ultra-550b-a55b",)),
-    Provider("ollama", "Ollama", "local, free, no API key",
-             "qwen2.5:32b", None, "OLLAMA_BASE_URL",
-             "http://localhost:11434", None,
-             ("qwen2.5:32b", "llama3.3:70b", "deepseek-r1:14b")),
-)
+from src.providers.registry import onboarding_choices
+
+PROVIDERS: Final[tuple[Provider, ...]] = tuple(Provider(**item) for item in onboarding_choices())
 
 TIMEOUT_CHOICES: Final[tuple[tuple[str, str], ...]] = (
     ("2400", "2400s (4 minutes — research mode, recommended)"),
