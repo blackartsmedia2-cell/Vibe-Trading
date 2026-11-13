@@ -205,29 +205,17 @@ async def _list_provider_models(
     api_key: str,
 ) -> LLMModelsResponse:
     """Best-effort live model discovery with a safe editable fallback."""
-    fallback = [provider.default_model]
-    # Keep the direct MiniMax picker curated. Saved/custom model names remain
-    # editable, and custom endpoints retain their own live model discovery.
+    fallback = LLMModelsResponse(provider=provider.name, models=[provider.default_model], source="default")
+    # Keep the direct MiniMax picker curated; custom endpoints still discover.
     if provider.name == "minimax" and base_url.rstrip("/") in provider.base_url_options:
-        return LLMModelsResponse(
-            provider=provider.name,
-            models=provider.model_options or fallback,
-            source="default",
-        )
+        fallback.models = provider.model_options or fallback.models
+        return fallback
     if provider.auth_type in {"oauth", "gh_cli"}:
-        return LLMModelsResponse(
-            provider=provider.name,
-            models=fallback,
-            source="default",
-            warning_code="oauth_discovery_unsupported",
-        )
+        fallback.warning_code = "oauth_discovery_unsupported"
+        return fallback
     if provider.api_key_required and not api_key:
-        return LLMModelsResponse(
-            provider=provider.name,
-            models=fallback,
-            source="default",
-            warning_code="api_key_required",
-        )
+        fallback.warning_code = "api_key_required"
+        return fallback
 
     if provider.name == "ollama" and not base_url.rstrip("/").endswith("/v1"):
         base_url = f"{base_url.rstrip('/')}/v1"
@@ -241,12 +229,8 @@ async def _list_provider_models(
             response.raise_for_status()
             models = _extract_model_ids(response.json())
     except (httpx.HTTPError, ValueError):
-        return LLMModelsResponse(
-            provider=provider.name,
-            models=fallback,
-            source="default",
-            warning_code="model_list_unavailable",
-        )
+        fallback.warning_code = "model_list_unavailable"
+        return fallback
 
     # Prefer configured recommendations without deleting discovered routes.
     # Paid variants, legacy models and future releases remain selectable.
@@ -260,7 +244,7 @@ async def _list_provider_models(
         models.insert(0, provider.default_model)
     return LLMModelsResponse(
         provider=provider.name,
-        models=models or fallback,
+        models=models,
         source="provider" if discovered else "default",
     )
 

@@ -14,4 +14,4 @@ from src.providers.configuration import _ensure_dotenv as _ensure_dotenv
 from src.providers.configuration import _sync_provider_env as _sync_provider_env
 from src.providers.diagnostics import provider_diagnostics as provider_diagnostics
 from src.providers.gateway import build_llm as build_llm
-from src.providers.gateway import uses_responses_api as uses_responses_api
+from src.providers.adapters import uses_responses_api as uses_responses_api

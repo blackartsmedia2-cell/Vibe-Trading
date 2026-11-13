@@ -58,13 +58,6 @@ def _reject_private_dns_targets(base_url: str) -> None:
             raise ValueError("Provider hostname resolves to a local or private network address")
 
 
-def _completion_url(base_url: str) -> str:
-    url = _validate_custom_base_url(base_url)
-    if url.endswith("/chat/completions"):
-        return url
-    return f"{url}/chat/completions"
-
-
 def _provider_async_client(base_url: str) -> httpx.AsyncClient:
     """Client for the provider test: every direct connection is re-checked.
 
@@ -94,7 +87,7 @@ async def _perform_completion_test(*, base_url: str, model: str, api_key: str) -
     }
     try:
         async with _provider_async_client(normalized_base_url) as client:
-            response = await client.post(_completion_url(normalized_base_url), headers=headers, json=body)
+            response = await client.post(f"{normalized_base_url}/chat/completions", headers=headers, json=body)
             response.raise_for_status()
             payload = response.json()
     except httpx.HTTPStatusError as exc:

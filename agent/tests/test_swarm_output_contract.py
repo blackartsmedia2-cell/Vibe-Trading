@@ -15,7 +15,6 @@ are intentionally NOT failed).
 """
 
 from __future__ import annotations
-import os
 
 import threading
 from pathlib import Path
@@ -525,13 +524,5 @@ def test_chatllm_close_is_best_effort_noop_without_client() -> None:
             return self
 
     llm = ChatLLM.__new__(ChatLLM)
-
-    from src.providers.configuration import resolve_config
-
-    from src.providers.chat import LLMRuntimeSnapshot
-
-    llm.config = resolve_config(environment=dict(os.environ))
-
-    llm.runtime_snapshot = LLMRuntimeSnapshot(llm.config.provider, llm.config.model, "")
     llm._llm = _BareLLM()  # no root_client / client attributes
     llm.close()  # must not raise

@@ -66,7 +66,7 @@ class ProviderConfig:
 
 
 def resolve_config(*, model_name: str | None = None, environment: Mapping[str, str] | None = None) -> ProviderConfig:
-    """Resolve once; explicit mappings never consult or mutate process settings.
+    """Resolve once from supplied settings and, for custom providers, the vault.
 
     Args:
         model_name: Optional model override.

@@ -6075,7 +6075,7 @@ def cmd_init() -> int:
 
     from src.providers.settings import SettingsStore
 
-    SettingsStore(path=_INIT_ENV_PATH, legacy=_INIT_ENV_PATH).persist(env_values)
+    SettingsStore(path=_INIT_ENV_PATH).persist(env_values, replace=True)
 
     next_steps = Table.grid(expand=True)
     next_steps.add_column(width=10, style="dim")
@@ -6431,7 +6431,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.provider_command == "login":
             return cmd_provider_login(args.provider)
         if args.provider_command == "list":
-            from src.providers.gateway import catalog
+            from src.providers.registry import provider_catalog as catalog
 
             console.print_json(data=catalog())
             return EXIT_SUCCESS

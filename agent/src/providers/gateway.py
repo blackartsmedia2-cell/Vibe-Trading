@@ -2,27 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from src.providers.capabilities import get_provider_capabilities
 from src.providers.configuration import ProviderConfig, resolve_config
-from src.providers.registry import provider_catalog
-
-catalog = provider_catalog
-
-
-def uses_responses_api(
-    provider: str, configured_responses_api: bool | None, deepseek_adapter: str | None = None
-) -> bool:
-    """Preserve the public protocol query with defaults resolved at the boundary."""
-    from src.providers.adapters import uses_responses_api as supports
-
-    if deepseek_adapter is None:
-        from src.providers.configuration import ModelOptions
-
-        deepseek_adapter = ModelOptions(**dict(os.environ)).vibe_trading_deepseek_adapter
-    return supports(provider, configured_responses_api, deepseek_adapter)
 
 
 def build_llm(*, model_name: str | None = None, callbacks: Any = None, snapshot: ProviderConfig | None = None) -> Any:
@@ -177,16 +160,15 @@ def build_llm(*, model_name: str | None = None, callbacks: Any = None, snapshot:
         # Imported here: the guard needs httpx/httpcore/anyio, and the
         # background-tool lifecycle checks import this module without them.
         from src.providers.endpoint_guard import build_public_only_clients, proxy_applies
+    clients = None
     if provider == "custom" and (disable_proxy or not proxy_applies(snapshot.base_url)):
         # A saved custom endpoint is re-checked on every connection, so a
         # host that re-resolves to a private address later is refused.
-        sync_client, async_client = build_public_only_clients()
-        kwargs["http_client"] = sync_client
-        kwargs["http_async_client"] = async_client
-        kwargs["vibe_owned_http_clients"] = (sync_client, async_client)
+        clients = build_public_only_clients()
     elif disable_proxy:
-        sync_client, async_client = adapters._build_proxy_free_http_clients()
-        kwargs["http_client"] = sync_client
-        kwargs["http_async_client"] = async_client
-        kwargs["vibe_owned_http_clients"] = (sync_client, async_client)
+        clients = adapters._build_proxy_free_http_clients()
+    if clients:
+        kwargs["http_client"], kwargs["http_async_client"] = clients
+        kwargs["vibe_owned_http_clients"] = clients
+        kwargs["openai_proxy"] = ""
     return adapters.ChatOpenAIWithReasoning(**kwargs)

@@ -102,32 +102,19 @@ def provider_diagnostics() -> dict[str, Any]:
         "langchain-deepseek",
     ]
     native_package_version = _package_version(caps.native_adapter_package) if caps.native_adapter_package else None
-    adapter_mode = (
-        adapters._deepseek_adapter_mode(options.vibe_trading_deepseek_adapter)
-        if caps.name == "deepseek"
-        else "native"
-        if caps.name == "anthropic"
-        else "openai-compatible"
-    )
-    adapter_type = (
-        "native"
-        if (
-            caps.name == "anthropic"
-            or (
-                caps.name == "deepseek"
-                and adapter_mode != "openai-compatible"
-                and native_package_version not in {None, "not_installed"}
-            )
-        )
-        else "openai-compatible"
-    )
-    from src.providers.registry import provider_backend
+    adapter_mode = adapter_type = "openai-compatible"
+    if snapshot.backend == "anthropic":
+        adapter_mode = adapter_type = "native"
+    elif snapshot.backend == "deepseek":
+        adapter_mode = adapters._deepseek_adapter_mode(options.vibe_trading_deepseek_adapter)
+        if adapter_mode != "openai-compatible" and native_package_version not in {None, "not_installed"}:
+            adapter_type = "native"
     from src.providers.tool_policy import policy_status
 
     return {
         "provider": caps.name if provider in {"kimi", "openai_codex"} else provider,
         "model": model,
-        "backend": provider_backend(provider),
+        "backend": snapshot.backend,
         "base_url": _redact_base_url_for_log(base_url),
         "api_key": {key_env: _redact_env_flag(key_env, environment)} if key_env else {},
         "http_header_env": {

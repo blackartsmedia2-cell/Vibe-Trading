@@ -70,6 +70,7 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
                     "TIMEOUT_SECONDS": "5",
                     "MAX_RETRIES": "0",
                     "VIBE_TRADING_DISABLE_HTTP_PROXY": "1",
+                    "OPENAI_PROXY": "http://127.0.0.1:1",
                 }
             )
             for name, temperature in [("before", 0.2), ("after", 0.7)]
@@ -210,6 +211,19 @@ def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, mo
         assert sdk.organization is None and sdk.project is None
 
 
+def test_native_deepseek_does_not_fill_a_missing_snapshot_key_from_the_environment(monkeypatch):
+    pytest.importorskip("langchain_deepseek")
+    from src.providers.gateway import build_llm
+
+    snapshot = resolve_config(environment={
+        "LANGCHAIN_PROVIDER": "deepseek", "LANGCHAIN_MODEL_NAME": "test",
+        "DEEPSEEK_BASE_URL": "https://relay.invalid/v1",
+    })
+    monkeypatch.setenv("OPENAI_API_KEY", "unrelated-new-default")
+    with pytest.raises(RuntimeError, match="Set DEEPSEEK_API_KEY"):
+        build_llm(snapshot=snapshot)
+
+
 @pytest.mark.parametrize("native", [False, True])
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_no_fallback_replays_an_emitted_chunk(monkeypatch, native, asynchronous):
@@ -272,3 +286,8 @@ def test_copilot_binding_keeps_explicit_token_and_stored_login_ignores_new_env(m
     monkeypatch.setattr(copilot_auth.subprocess, "run", run)
     assert copilot_auth._client_options("") == {"github_token": "gho_stored"}
     assert "GH_TOKEN" not in seen and "GITHUB_TOKEN" not in seen
+    monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "gho_new_copilot_default")
+    monkeypatch.setattr(copilot_auth, "gh_cli_token", lambda **_: "")
+    monkeypatch.setenv("COPILOT_SDK_AUTH_TOKEN", "gho_other_sdk_token")
+    options = copilot_auth._client_options("")
+    assert not {*copilot_auth.TOKEN_ENV_NAMES, "COPILOT_SDK_AUTH_TOKEN"}.intersection(options["env"])

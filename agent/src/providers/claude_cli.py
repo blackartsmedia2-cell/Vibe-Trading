@@ -276,7 +276,7 @@ def _run_cli(
         # the model's own default in place.
         effort_args = ["--effort", effort] if effort in CLAUDE_CLI_EFFORT_LEVELS else []
         cmd = [
-            resolve_claude_cli() if environment is None else resolve_claude_cli(environment),
+            resolve_claude_cli(environment),
             "-p",
             *ISOLATION_ARGS,
             "--output-format",
@@ -289,7 +289,7 @@ def _run_cli(
             "--json-schema",
             json.dumps(_schema(allow_tools)),
         ]
-        env = child_env() if environment is None else child_env(environment)
+        env = child_env(environment)
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -415,7 +415,7 @@ def _decide(
                 effort=effort,
                 timeout=remaining,
                 cancel_event=cancel_event,
-                **({"environment": environment} if environment is not None else {}),
+                environment=environment,
             )
         except Exception as exc:
             exc.usage_metadata = decision.usage
@@ -577,7 +577,7 @@ class ClaudeCliLLM:
             tools=self.tools,
             timeout=self._budget(config),
             cancel_event=threading.Event(),
-            **({"environment": self.environment} if self.environment is not None else {}),
+            environment=self.environment,
         )
         return self._message(decision or _Decision())
 
@@ -609,7 +609,7 @@ class ClaudeCliLLM:
                     tools=self.tools,
                     timeout=budget,
                     cancel_event=cancel_event,
-                    **({"environment": self.environment} if self.environment is not None else {}),
+                    environment=self.environment,
                 )
                 if decision is not None:
                     chunks.put(

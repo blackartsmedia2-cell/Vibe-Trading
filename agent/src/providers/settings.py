@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Mapping
 
 from src.config.accessor import get_env_value, reset_env_config
-from src.config.dotenv import _read_env_values, _write_env_values
+from src.config.dotenv import _atomic_write_secret, _read_env_values, _write_env_values, render_env
 from src.providers.configuration import AGENT_DIR, CONFIG_LOCK
 from src.providers.registry import provider_catalog
 
@@ -37,15 +37,19 @@ class SettingsStore:
                     values.pop(key, None)
         return values
 
-    def persist(self, updates: Mapping[str, str], *, apply: bool = False) -> dict[str, str]:
-        """Upsert privately with legacy migration, preserving unrelated settings."""
+    def persist(self, updates: Mapping[str, str], *, apply: bool = False, replace: bool = False) -> dict[str, str]:
+        """Upsert settings, or replace them for an explicitly confirmed CLI reset."""
         with CONFIG_LOCK:
             merged = dict(updates)
-            if not self.path.exists() and self.legacy != self.path and self.legacy.exists():
+            if not replace and not self.path.exists() and self.legacy != self.path and self.legacy.exists():
                 merged = {**_read_env_values(self.legacy), **merged}
             if get_env_value("VIBE_TRADING_DESKTOP_SECURE_CREDENTIALS") == "1":
                 merged.update({key: "" for key in secret_names()})
-            _write_env_values(self.path, merged)
+            if replace:
+                self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                _atomic_write_secret(self.path, render_env(merged), allow_in_place=False)
+            else:
+                _write_env_values(self.path, merged)
             if apply:
                 self.apply(updates)
             return self.read()

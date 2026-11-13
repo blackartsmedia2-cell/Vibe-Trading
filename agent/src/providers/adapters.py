@@ -894,6 +894,8 @@ def _build_native_deepseek(
         return None
 
     api_key, base_url = snapshot.api_key, snapshot.base_url
+    if not api_key:
+        raise RuntimeError("Set DEEPSEEK_API_KEY (or legacy OPENAI_API_KEY) before using the native DeepSeek adapter")
     output_limit = snapshot.options.langchain_max_tokens
     client = chat_deepseek(
         model=model,
@@ -1364,13 +1366,11 @@ def uses_responses_api(
         return False
     if normalized_provider != "deepseek":
         return True
-    adapter = _deepseek_adapter_mode() if deepseek_adapter is None else deepseek_adapter.strip().lower()
-    adapter = {
-        "compat": "openai-compatible",
-        "compatible": "openai-compatible",
-        "openai": "openai-compatible",
-        "openai_compatible": "openai-compatible",
-    }.get(adapter, adapter)
+    if deepseek_adapter is None:
+        from src.config.accessor import get_env_value
+
+        deepseek_adapter = get_env_value("VIBE_TRADING_DEEPSEEK_ADAPTER", "auto")
+    adapter = _deepseek_adapter_mode(deepseek_adapter)
     if adapter == "openai-compatible":
         return True
     return adapter == "auto" and not _native_deepseek_adapter_available()

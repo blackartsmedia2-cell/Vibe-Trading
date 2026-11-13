@@ -85,6 +85,7 @@ def test_no_temp_files_are_left_behind(fake_home):
 def test_finalize_removes_the_partial_and_writes_owner_only_env(fake_home):
     onboard._save_partial({"TUSHARE_TOKEN": "draft"})
 
+    onboard._env_path().write_text("LANGCHAIN_REASONING_EFFORT=high\n")
     env_path = onboard._finalize({"TUSHARE_TOKEN": "final"})
 
     assert dotenv._read_env_values(env_path) == {"TUSHARE_TOKEN": "final"}

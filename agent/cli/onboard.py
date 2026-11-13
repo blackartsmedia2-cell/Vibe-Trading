@@ -84,7 +84,7 @@ def _save_partial(values: dict[str, str]) -> None:
 
 def _finalize(values: dict[str, str]) -> Path:
     """Persist through the same private settings store used by API and setup."""
-    SettingsStore(path=_env_path(), legacy=_env_path()).persist(values)
+    SettingsStore(path=_env_path()).persist(values, replace=True)
     try:
         _partial_path().unlink()
     except OSError:

@@ -169,8 +169,6 @@ def get_provider_capabilities(
             capture_reasoning=True,
             send_reasoning_content=True,
         )
-    if normalized == "openai-codex":
-        return _PROVIDERS["openai-codex"]
     if normalized and normalized != "openai":
         return _PROVIDERS.get(normalized, _PROVIDERS["openai"])
     inferred = _infer_from_model(model or "")
@@ -187,30 +185,8 @@ def provider_env_names(provider: str | None, model: str | None = None) -> tuple[
 
 @lru_cache(maxsize=1)
 def _provider_default_base_urls() -> dict[str, str]:
-    """Canonical ``name -> default_base_url`` map from the provider catalog.
-
-    The catalog (``llm_providers.json``) declares each provider's canonical API
-    root. Web Settings already fall back to it; this exposes the same default to
-    the backend credential path so a CLI / manual-``.env`` user who sets only
-    ``LANGCHAIN_PROVIDER`` + the API key still reaches the right endpoint (e.g.
-    Z.ai's ``/api/coding/paas/v4``) instead of silently defaulting to
-    ``api.openai.com`` and getting a 404 for a non-OpenAI model.
-    """
-    entries = provider_catalog()
-    result: dict[str, str] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        name = str(entry.get("name", "")).strip().lower()
-        url = str(entry.get("default_base_url", "")).strip()
-        if name and url:
-            result[name] = url
-    return result
-
-
-def _provider_default_base_url(provider_name: str) -> str:
-    """Return the catalog default base URL for a canonical provider name."""
-    return _provider_default_base_urls().get((provider_name or "").strip().lower(), "")
+    """Canonical endpoint defaults from the validated provider catalog."""
+    return {row["name"]: row["default_base_url"] for row in provider_catalog() if row["default_base_url"]}
 
 
 def get_llm_credentials(
@@ -218,28 +194,16 @@ def get_llm_credentials(
     model: str | None,
     *, environment: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Resolve API key, base URL, and model from provider/model env vars.
-
-    Centralizes the ``provider → env_var_name → os.getenv → credential`` chain
-    that was previously duplicated across ``_sync_provider_env()`` and
-    ``provider_diagnostics()`` in ``llm.py``.
+    """Resolve legacy-compatible credentials without changing process settings.
 
     Args:
-        provider: Configured provider name (e.g. ``"openrouter"``).
-        model: Configured model name (e.g. ``"deepseek/deepseek-v4-pro"``).
+        provider: Configured provider name.
+        model: Configured model name, including legacy model-based inference.
+        environment: Captured settings, or None for current environment/login.
 
     Returns:
-        Dict with ``"provider"``, ``"api_key"``, ``"base_url"``, ``"model"``
-        keys. Values may be empty strings when not configured.
-
-    Notes:
-        Reads dynamic env vars via ``os.getenv`` — not part of ``EnvConfig``.
-        When no base URL is set in the environment, falls back to the provider
-        catalog's ``default_base_url`` so a provider set without an explicit
-        ``*_BASE_URL`` still hits its canonical endpoint. Ollama URLs are
-        normalized here to its OpenAI-compatible ``/v1`` root so diagnostics,
-        preflight, environment synchronization, and runtime construction all
-        consume the same endpoint.
+        Provider, API key, endpoint and model. Custom profiles read the active
+        credential vault; other providers retain the generic OPENAI_* fallback.
     """
     env = os.environ if environment is None else environment
     normalized_provider = (provider or "").strip().lower().replace("_", "-")
@@ -252,37 +216,22 @@ def get_llm_credentials(
     caps = get_provider_capabilities(provider, model)
     key_env, base_env = caps.api_key_env, caps.base_url_env
 
-    if key_env is not None:
-        api_key = env.get(  # noqa: env-gate
-            key_env, ""
-        ) or env.get(  # noqa: env-gate — dynamic provider key fallback
-            "OPENAI_API_KEY", ""
-        )
-    else:
-        api_key = (
-            env.get("OPENAI_API_KEY", "")  # noqa: env-gate — ollama default key
-            or "ollama"
-        )
+    api_key = (env.get(key_env, "") if key_env else "") or env.get("OPENAI_API_KEY", "")
+    if key_env is None:
+        api_key = api_key or "ollama"
 
     if caps.name == "copilot":
-        from src.providers.copilot_auth import is_supported_token
+        from src.providers.copilot_auth import TOKEN_ENV_NAMES, is_supported_token
         api_key = _gh_cli_token() if environment is None else next(
-            (env[name].strip() for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if is_supported_token(env.get(name, "").strip())), ""
+            (env[name].strip() for name in TOKEN_ENV_NAMES if is_supported_token(env.get(name, "").strip())),
+            "",
         )
 
     base_url = (
-        (
-            env.get(base_env, "")  # noqa: env-gate — dynamic provider URL chain
-            if base_env
-            else ""
-        )
-        or env.get(  # noqa: env-gate — dynamic provider URL chain
-            "OPENAI_BASE_URL", ""
-        )
-        or env.get(  # noqa: env-gate — dynamic provider URL chain
-            "OPENAI_API_BASE", ""
-        )
-        or _provider_default_base_url(caps.name)
+        env.get(base_env, "")
+        or env.get("OPENAI_BASE_URL", "")
+        or env.get("OPENAI_API_BASE", "")
+        or _provider_default_base_urls().get(caps.name, "")
     )
     if caps.name == "ollama":
         base_url = base_url.strip().rstrip("/")

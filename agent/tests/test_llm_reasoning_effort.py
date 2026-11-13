@@ -134,7 +134,11 @@ def test_uses_responses_api_matches_provider_route(
 ) -> None:
     monkeypatch.setattr(_provider_adapters, "_native_deepseek_adapter_available", lambda: native_available)
 
+    monkeypatch.setenv("LANGCHAIN_MAX_TOKENS", "-1")
+    if adapter is not None:
+        monkeypatch.setenv("VIBE_TRADING_DEEPSEEK_ADAPTER", adapter)
     assert uses_responses_api(provider, True, adapter) is expected
+    assert uses_responses_api(provider, True) is expected
 
 
 class TestDirectOpenAI:

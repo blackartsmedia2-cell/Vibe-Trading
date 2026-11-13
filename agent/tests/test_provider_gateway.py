@@ -7,7 +7,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-from src.providers.gateway import catalog
+from src.providers.registry import provider_catalog as catalog
 from src.providers.configuration import resolve_config
 from src.providers.capabilities import get_provider_capabilities
 
@@ -31,13 +31,18 @@ def test_catalog_projects_the_same_connection_to_every_surface():
         assert (p["model"], p["base_url"]) == (row["default_model"], row["default_base_url"])
 
 
-def test_model_inference_does_not_change_explicit_adapter_family():
+def test_model_inference_does_not_change_explicit_adapter_family(monkeypatch):
     route = resolve_config(environment={"LANGCHAIN_PROVIDER": "openrouter", "LANGCHAIN_MODEL_NAME": "anthropic/claude-test"})
     assert route.backend == "openai_compatible"
     assert get_provider_capabilities(route.provider, route.model).name == "openrouter"
     route = resolve_config(environment={"LANGCHAIN_PROVIDER": "openai", "LANGCHAIN_MODEL_NAME": "deepseek-test"})
     assert route.backend == "openai_compatible"
     assert get_provider_capabilities(route.provider, route.model).name == "deepseek"
+    from src.providers import diagnostics
+
+    monkeypatch.setattr(diagnostics, "resolve_config", lambda: route)
+    monkeypatch.setattr(diagnostics, "_package_version", lambda _: "installed")
+    assert diagnostics.provider_diagnostics()["adapter"]["type"] == "openai-compatible"
     assert resolve_config(environment={"LANGCHAIN_PROVIDER": "openai_codex", "LANGCHAIN_MODEL_NAME": "test"}).backend == "openai_codex"
     assert resolve_config(environment={"LANGCHAIN_PROVIDER": "github-copilot", "LANGCHAIN_MODEL_NAME": "test"}).backend == "copilot"
     assert resolve_config(environment={"LANGCHAIN_PROVIDER": "unknown-legacy-relay", "LANGCHAIN_MODEL_NAME": "test"}).backend == "openai_compatible"
@@ -199,7 +204,7 @@ def test_catalog_and_gateway_metadata_do_not_import_sdks():
         [
             sys.executable,
             "-c",
-            "import sys; from src.providers.gateway import catalog; "
+            "import sys; from src.providers.registry import provider_catalog as catalog; "
             'assert catalog(); assert "langchain_openai" not in sys.modules; '
             'assert "src.providers.llm" not in sys.modules',
         ],

@@ -20,8 +20,6 @@
       "capture_reasoning": true,
       "openrouter_reasoning_body": true
     },
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 0,
       "label": "OpenRouter (recommended - multiple models)",
@@ -30,7 +28,6 @@
     },
     "onboarding": {
       "order": 0,
-      "label": "OpenRouter",
       "description": "recommended — 200+ models, one key",
       "key_prefix": "sk-or-"
     }
@@ -46,17 +43,13 @@
     "capabilities": {
       "top_level_reasoning_effort": true
     },
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 7,
-      "label": "OpenAI",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     },
     "onboarding": {
       "order": 1,
-      "label": "OpenAI",
       "description": "GPT-5.5 direct",
       "key_prefix": "sk-"
     },
@@ -78,12 +71,10 @@
       "native_adapter_package": "langchain-anthropic"
     },
     "backend": "anthropic",
-    "automatic_model_list": false,
     "onboarding": {
       "order": 2,
       "label": "Anthropic",
-      "description": "Anthropic Messages API or compatible proxy",
-      "key_prefix": null
+      "description": "Anthropic Messages API or compatible proxy"
     },
     "model_options": [
       "claude-sonnet-4-6",
@@ -112,20 +103,15 @@
       "ultra",
       "persistent"
     ],
-    "capabilities": {},
     "backend": "openai_codex",
     "automatic_model_list": true,
     "setup": {
-      "order": 19,
-      "label": "OpenAI Codex (ChatGPT OAuth)",
-      "key_prefix": null,
-      "key_placeholder": null
+      "order": 19
     },
     "onboarding": {
       "order": 3,
       "label": "OpenAI Codex",
-      "description": "ChatGPT OAuth for Codex",
-      "key_prefix": null
+      "description": "ChatGPT OAuth for Codex"
     },
     "model_options": [
       "openai-codex/gpt-6-sol",
@@ -147,16 +133,13 @@
       "native_adapter_package": "langchain-deepseek"
     },
     "backend": "deepseek",
-    "automatic_model_list": false,
     "setup": {
       "order": 1,
-      "label": "DeepSeek",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     },
     "onboarding": {
       "order": 4,
-      "label": "DeepSeek",
       "description": "cheapest tier — good for batch backtest research",
       "key_prefix": "sk-"
     },
@@ -191,7 +174,6 @@
         "User-Agent": "{user_agent}"
       }
     },
-    "backend": "openai_compatible",
     "runtime_variants": {
       "opencode-zen": {
         "name": "opencode-zen",
@@ -222,10 +204,8 @@
         "native_adapter_package": null
       }
     },
-    "automatic_model_list": false,
     "setup": {
       "order": 2,
-      "label": "OpenCode (Go / Zen)",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     },
@@ -244,18 +224,13 @@
     "default_model": "deepseek-ai/DeepSeek-V3.1-Terminus",
     "default_base_url": "https://api.siliconflow.cn/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 3,
-      "label": "SiliconFlow (CN)",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     },
     "onboarding": {
       "order": 6,
-      "label": "SiliconFlow (CN)",
       "description": "OpenAI-compatible MaaS endpoint in China",
       "key_prefix": "sk-"
     },
@@ -271,18 +246,13 @@
     "default_model": "deepseek-ai/DeepSeek-V3.1-Terminus",
     "default_base_url": "https://api.siliconflow.com/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 4,
-      "label": "SiliconFlow (Global)",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     },
     "onboarding": {
       "order": 7,
-      "label": "SiliconFlow (Global)",
       "description": "OpenAI-compatible global MaaS endpoint",
       "key_prefix": "sk-"
     },
@@ -303,20 +273,16 @@
         "User-Agent": "{user_agent}"
       }
     },
-    "backend": "openai_compatible",
     "aliases": [
       "nvidia-nim"
     ],
-    "automatic_model_list": false,
     "setup": {
       "order": 6,
-      "label": "NVIDIA NIM",
       "key_prefix": "nvapi-",
       "key_placeholder": "nvapi-..."
     },
     "onboarding": {
       "order": 9,
-      "label": "NVIDIA NIM",
       "description": "hosted NVIDIA API catalog",
       "key_prefix": "nvapi-"
     },
@@ -335,12 +301,8 @@
     "capabilities": {
       "gemini_thought_signatures": true
     },
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 8,
-      "label": "Gemini",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     }
   },
@@ -352,12 +314,8 @@
     "default_model": "meta-llama/llama-4-maverick-17b-128e-instruct",
     "default_base_url": "https://api.groq.com/openai/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 9,
-      "label": "Groq",
       "key_prefix": "gsk_",
       "key_placeholder": "gsk_..."
     }
@@ -370,12 +328,8 @@
     "default_model": "moonshotai/kimi-k3",
     "default_base_url": "https://api.novita.ai/openai",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 15,
-      "label": "Novita AI",
       "key_prefix": "sk_",
       "key_placeholder": "sk_..."
     }
@@ -388,12 +342,8 @@
     "default_model": "qwen-plus-latest",
     "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 10,
-      "label": "DashScope / Qwen",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     }
@@ -405,10 +355,7 @@
     "base_url_env": "DASHSCOPE_BASE_URL",
     "default_model": "qwen-plus-latest",
     "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false
+    "api_key_required": true
   },
   {
     "name": "zhipu",
@@ -421,12 +368,8 @@
     "capabilities": {
       "capture_reasoning": true
     },
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 11,
-      "label": "Zhipu",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     }
   },
@@ -441,9 +384,7 @@
     "capabilities": {
       "capture_reasoning": true,
       "name": "zhipu"
-    },
-    "backend": "openai_compatible",
-    "automatic_model_list": false
+    }
   },
   {
     "name": "moonshot",
@@ -465,14 +406,11 @@
         "User-Agent": "{user_agent}"
       }
     },
-    "backend": "openai_compatible",
     "aliases": [
       "kimi"
     ],
-    "automatic_model_list": false,
     "setup": {
       "order": 12,
-      "label": "Moonshot / Kimi",
       "key_prefix": "sk-",
       "key_placeholder": "sk-..."
     }
@@ -492,9 +430,7 @@
       "default_headers": {
         "User-Agent": "{user_agent}"
       }
-    },
-    "backend": "openai_compatible",
-    "automatic_model_list": false
+    }
   },
   {
     "name": "minimax",
@@ -512,13 +448,8 @@
       "https://api.minimaxi.com/v1"
     ],
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 13,
-      "label": "MiniMax",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     }
   },
@@ -530,13 +461,8 @@
     "default_model": "MiMo-72B-A27B",
     "default_base_url": "https://api.xiaomimimo.com/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 14,
-      "label": "Xiaomi MIMO",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     }
   },
@@ -548,16 +474,11 @@
     "default_model": "4.0Ultra",
     "default_base_url": "https://spark-api-open.xf-yun.com/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
     "aliases": [
       "iflytek"
     ],
-    "automatic_model_list": false,
     "setup": {
       "order": 16,
-      "label": "iFlytek Spark",
-      "key_prefix": null,
       "key_placeholder": "api-password..."
     }
   },
@@ -569,13 +490,9 @@
     "default_model": "glm-5.1",
     "default_base_url": "https://api.z.ai/api/coding/paas/v4",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 17,
       "label": "Z.ai (Coding platform)",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     }
   },
@@ -587,20 +504,13 @@
     "default_model": "Qwen/Qwen3.5-27B",
     "default_base_url": "https://api-inference.modelscope.cn/v1",
     "api_key_required": true,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 5,
-      "label": "ModelScope",
-      "key_prefix": null,
       "key_placeholder": "api-key..."
     },
     "onboarding": {
       "order": 8,
-      "label": "ModelScope",
-      "description": "Alibaba's OpenAI-compatible MaaS platform",
-      "key_prefix": null
+      "description": "Alibaba's OpenAI-compatible MaaS platform"
     },
     "model_options": [
       "Qwen/Qwen3.5-27B",
@@ -616,20 +526,13 @@
     "default_model": "qwen2.5:32b",
     "default_base_url": "http://localhost:11434",
     "api_key_required": false,
-    "capabilities": {},
-    "backend": "openai_compatible",
-    "automatic_model_list": false,
     "setup": {
       "order": 18,
-      "label": "Ollama (local, free)",
-      "key_prefix": null,
-      "key_placeholder": null
+      "label": "Ollama (local, free)"
     },
     "onboarding": {
       "order": 10,
-      "label": "Ollama",
-      "description": "local, free, no API key",
-      "key_prefix": null
+      "description": "local, free, no API key"
     },
     "model_options": [
       "qwen2.5:32b",
@@ -647,12 +550,10 @@
     "api_key_required": false,
     "auth_type": "gh_cli",
     "login_command": "gh auth login",
-    "capabilities": {},
     "backend": "copilot",
     "aliases": [
       "github-copilot"
-    ],
-    "automatic_model_list": false
+    ]
   },
   {
     "name": "claude-cli",
@@ -671,7 +572,6 @@
       "xhigh",
       "max"
     ],
-    "capabilities": {},
     "backend": "claude_cli",
     "automatic_model_list": true
   }

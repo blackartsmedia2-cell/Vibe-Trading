@@ -40,7 +40,11 @@ def _catalog() -> tuple[dict[str, Any], ...]:
 def provider_catalog() -> list[dict[str, Any]]:
     """Return independent public metadata records without runtime-only fields."""
     private = {"capabilities", "aliases", "runtime_variants", "setup", "onboarding"}
-    return [deepcopy({k: v for k, v in row.items() if k not in private}) for row in _catalog()]
+    return [
+        {"backend": "openai_compatible", "automatic_model_list": False,
+         **deepcopy({k: v for k, v in row.items() if k not in private})}
+        for row in _catalog()
+    ]
 
 
 def provider_backend(provider: str) -> str:

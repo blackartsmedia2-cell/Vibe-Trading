@@ -21,6 +21,7 @@ from typing import Any, Optional
 from langchain_core.messages import AIMessage, AIMessageChunk
 
 COPILOT_TOKEN_ENV = "COPILOT_GITHUB_TOKEN"
+TOKEN_ENV_NAMES = (COPILOT_TOKEN_ENV, "GH_TOKEN", "GITHUB_TOKEN")
 _SUPPORTED_TOKEN_PREFIXES = ("gho_", "ghu_", "github_pat_")
 
 
@@ -51,7 +52,7 @@ def gh_cli_token(*, stored_only: bool = False) -> str:
 
 def resolve_copilot_token() -> tuple[str, str]:
     """Resolve explicit credentials; the SDK handles stored CLI credentials."""
-    for name in (COPILOT_TOKEN_ENV, "GH_TOKEN", "GITHUB_TOKEN"):
+    for name in TOKEN_ENV_NAMES:
         token = os.getenv(name, "").strip()  # noqa: env-gate - provider credential
         if is_supported_token(token):
             return token, name
@@ -65,12 +66,16 @@ def get_copilot_login_status() -> Optional[str]:
     return token or None
 
 
-def _client_options(token: str | None = None) -> dict[str, str]:
+def _client_options(token: str | None = None) -> dict[str, Any]:
     """Return explicit SDK options without disabling stored CLI credentials."""
     if token is None:
         token, _source = resolve_copilot_token()
     elif not token:
         token = gh_cli_token(stored_only=True)
+        if not token:
+            # Keep stored CLI login available without inheriting a later token.
+            excluded = {*TOKEN_ENV_NAMES, "COPILOT_SDK_AUTH_TOKEN"}
+            return {"env": {k: v for k, v in os.environ.items() if k not in excluded}}
     return {"github_token": token} if token else {}
 
 
