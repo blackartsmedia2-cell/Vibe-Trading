@@ -8,6 +8,7 @@ and stopping really closes the stream rather than abandoning a thread.
 """
 
 from __future__ import annotations
+import os
 
 import threading
 import time
@@ -79,6 +80,10 @@ class _FakeLLM:
 
 def _client(stream: _SilentStream) -> ChatLLM:
     client = ChatLLM.__new__(ChatLLM)
+    from src.providers.configuration import resolve_config
+    from src.providers.chat import LLMRuntimeSnapshot
+    client.config = resolve_config(environment=dict(os.environ))
+    client.runtime_snapshot = LLMRuntimeSnapshot(client.config.provider, client.config.model, "")
     client.model_name = "fake"
     client._llm = _FakeLLM(stream)
     return client

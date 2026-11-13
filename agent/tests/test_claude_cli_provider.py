@@ -49,7 +49,7 @@ def test_claude_cli_label_survives_public_run_metadata() -> None:
     assert public_provider_metadata("claude-cli") == "claude-cli"
 
 
-def test_sync_provider_env_clears_openai_transport(monkeypatch) -> None:
+def test_cli_config_does_not_use_or_destroy_openai_credentials(monkeypatch) -> None:
     import src.providers.llm as llm
 
     use_provider(monkeypatch)
@@ -58,8 +58,10 @@ def test_sync_provider_env_clears_openai_transport(monkeypatch) -> None:
     llm._sync_provider_env()
     import os
 
-    assert "OPENAI_API_KEY" not in os.environ
-    assert "OPENAI_BASE_URL" not in os.environ
+    from src.providers.configuration import resolve_config
+    assert resolve_config().api_key == ""
+    assert os.environ["OPENAI_API_KEY"] == "sk-should-be-removed"
+    assert os.environ["OPENAI_BASE_URL"] == "https://example.invalid/v1"
 
 
 def test_build_llm_returns_cli_wrapper(monkeypatch) -> None:

@@ -549,7 +549,7 @@
     "subtitle": "このローカルプロジェクトのモデル認証情報とマーケットデータソーストークンを設定します。",
     "unavailable": "設定は利用できません",
     "llmSettings": "LLM 設定",
-    "llmSettingsDesc": "エージェントが使用するモデルを選択し、プロジェクトローカルの agent/.env ファイルに保存します。",
+    "llmSettingsDesc": "エージェントが使用するモデルを選択し、~/.vibe-trading/.env に保存します。",
     "connection": "接続",
     "model": "モデル",
     "useProviderDefaults": "プロバイダーのデフォルトを使用",

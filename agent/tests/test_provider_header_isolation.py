@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from src.providers import adapters as _provider_adapters
+from src.providers import configuration as _provider_configuration
+
 import asyncio
 import json
 import os
@@ -214,7 +217,7 @@ def test_build_rejects_non_ascii_openrouter_api_key_before_transport() -> None:
         "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
     }
     try:
-        with patch.object(llm_mod, "_dotenv_loaded", True):
+        with patch.object(_provider_configuration, "_dotenv_loaded", True):
             with patch.dict(os.environ, env, clear=True):
                 with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY.*non-ASCII") as excinfo:
                     build_llm()
@@ -241,9 +244,9 @@ def test_build_passes_openrouter_credentials_explicitly() -> None:
         "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
     }
     try:
-        with patch.object(llm_mod, "_dotenv_loaded", True):
+        with patch.object(_provider_configuration, "_dotenv_loaded", True):
             with patch.dict(os.environ, env, clear=True):
-                with patch.object(llm_mod, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
+                with patch.object(_provider_adapters, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
                     build_llm()
     finally:
         reset_env_config()
@@ -266,7 +269,7 @@ def test_provider_doctor_reports_header_safety_without_values() -> None:
         "OPENAI_CUSTOM_HEADERS": "X-Debug: private-à",
     }
     try:
-        with patch.object(llm_mod, "_dotenv_loaded", True):
+        with patch.object(_provider_configuration, "_dotenv_loaded", True):
             with patch.dict(os.environ, env, clear=True):
                 diagnostics = provider_diagnostics()
     finally:
@@ -377,7 +380,7 @@ def test_stream_usage_rejection_self_heals_and_is_remembered() -> None:
         )
 
     model = "gpt-usage-reject-test"
-    llm_mod._STREAM_USAGE_UNSUPPORTED.discard(model)
+    _provider_adapters._STREAM_USAGE_UNSUPPORTED.clear()
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         llm = ChatOpenAIWithReasoning(
             model=model,
@@ -399,15 +402,15 @@ def test_stream_usage_rejection_self_heals_and_is_remembered() -> None:
     assert '"stream_options"' in calls[0]
     assert '"stream_options"' not in calls[1]
     assert '"stream_options"' not in calls[2]
-    llm_mod._STREAM_USAGE_UNSUPPORTED.discard(model)
+    _provider_adapters._STREAM_USAGE_UNSUPPORTED.clear()
 
 
 def test_stream_usage_unsupported_error_detection() -> None:
     import src.providers.llm as llm_mod
 
-    assert llm_mod._is_stream_usage_unsupported_error(ValueError("Unknown parameter: 'stream_options' is unsupported"))
-    assert llm_mod._is_stream_usage_unsupported_error(
+    assert _provider_adapters._is_stream_usage_unsupported_error(ValueError("Unknown parameter: 'stream_options' is unsupported"))
+    assert _provider_adapters._is_stream_usage_unsupported_error(
         ValueError("include_usage is not a valid field for this endpoint")
     )
-    assert not llm_mod._is_stream_usage_unsupported_error(ValueError("model overloaded, retry later"))
-    assert not llm_mod._is_stream_usage_unsupported_error(ValueError("temperature is unsupported"))
+    assert not _provider_adapters._is_stream_usage_unsupported_error(ValueError("model overloaded, retry later"))
+    assert not _provider_adapters._is_stream_usage_unsupported_error(ValueError("temperature is unsupported"))

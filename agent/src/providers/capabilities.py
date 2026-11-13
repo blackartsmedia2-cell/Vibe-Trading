@@ -216,6 +216,7 @@ def _provider_default_base_url(provider_name: str) -> str:
 def get_llm_credentials(
     provider: str | None,
     model: str | None,
+    *, environment: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Resolve API key, base URL, and model from provider/model env vars.
 
@@ -240,6 +241,7 @@ def get_llm_credentials(
         preflight, environment synchronization, and runtime construction all
         consume the same endpoint.
     """
+    env = os.environ if environment is None else environment
     normalized_provider = (provider or "").strip().lower().replace("_", "-")
     if normalized_provider == "custom":
         from src.providers.custom_profiles import active_provider_credentials
@@ -251,30 +253,33 @@ def get_llm_credentials(
     key_env, base_env = caps.api_key_env, caps.base_url_env
 
     if key_env is not None:
-        api_key = os.getenv(  # noqa: env-gate
+        api_key = env.get(  # noqa: env-gate
             key_env, ""
-        ) or os.getenv(  # noqa: env-gate — dynamic provider key fallback
+        ) or env.get(  # noqa: env-gate — dynamic provider key fallback
             "OPENAI_API_KEY", ""
         )
     else:
         api_key = (
-            os.getenv("OPENAI_API_KEY", "")  # noqa: env-gate — ollama default key
+            env.get("OPENAI_API_KEY", "")  # noqa: env-gate — ollama default key
             or "ollama"
         )
 
-    if caps.name == "copilot" and not api_key:
-        api_key = _gh_cli_token()
+    if caps.name == "copilot":
+        from src.providers.copilot_auth import is_supported_token
+        api_key = _gh_cli_token() if environment is None else next(
+            (env[name].strip() for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN") if is_supported_token(env.get(name, "").strip())), ""
+        )
 
     base_url = (
         (
-            os.getenv(base_env, "")  # noqa: env-gate — dynamic provider URL chain
+            env.get(base_env, "")  # noqa: env-gate — dynamic provider URL chain
             if base_env
             else ""
         )
-        or os.getenv(  # noqa: env-gate — dynamic provider URL chain
+        or env.get(  # noqa: env-gate — dynamic provider URL chain
             "OPENAI_BASE_URL", ""
         )
-        or os.getenv(  # noqa: env-gate — dynamic provider URL chain
+        or env.get(  # noqa: env-gate — dynamic provider URL chain
             "OPENAI_API_BASE", ""
         )
         or _provider_default_base_url(caps.name)

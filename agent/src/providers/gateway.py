@@ -1,71 +1,192 @@
-"""In-process LLM gateway: catalog-backed routing and adapter construction.
-
-ChatLLM remains the normalized chat/stream interface. This module owns the
-selection boundary and does not introduce a server, a second message format,
-or automatic cross-provider retries.
-"""
+"""In-process gateway: one configuration snapshot, then one protocol adapter."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
 from typing import Any
 
-from src.providers.capabilities import ProviderCapabilities, get_provider_capabilities
-from src.providers.registry import provider_backend, provider_catalog
+from src.providers.capabilities import get_provider_capabilities
+from src.providers.configuration import ProviderConfig, resolve_config
+from src.providers.registry import provider_catalog
+
+catalog = provider_catalog
 
 
-@dataclass(frozen=True)
-class ProviderRoute:
-    """Credential-free resolved route; safe to inspect before constructing SDKs."""
+def uses_responses_api(
+    provider: str, configured_responses_api: bool | None, deepseek_adapter: str | None = None
+) -> bool:
+    """Preserve the public protocol query with defaults resolved at the boundary."""
+    from src.providers.adapters import uses_responses_api as supports
 
-    provider: str
-    model: str
-    backend: str
-    capabilities: ProviderCapabilities
+    if deepseek_adapter is None:
+        from src.providers.configuration import ModelOptions
 
-
-def resolve_route(provider: str, model: str) -> ProviderRoute:
-    """Resolve adapter selection while preserving legacy capability inference.
-
-    Args:
-        provider: Explicit provider; aliases use the same backend.
-        model: Requested model, never rewritten based on its name.
-
-    Returns:
-        Route separating the selected backend from inferred wire capabilities.
-
-    Raises:
-        RuntimeError: If the model is empty.
-    """
-    if not model:
-        raise RuntimeError("LANGCHAIN_MODEL_NAME is not set")
-    return ProviderRoute(
-        provider=provider.lower(),
-        model=model,
-        backend=provider_backend(provider),
-        capabilities=get_provider_capabilities(provider, model),
-    )
+        deepseek_adapter = ModelOptions(**dict(os.environ)).vibe_trading_deepseek_adapter
+    return supports(provider, configured_responses_api, deepseek_adapter)
 
 
-def build_model(*, model_name: str | None = None, callbacks: Any = None) -> Any:
-    """Create a fresh adapter through the common route and compatibility factory.
+def build_llm(*, model_name: str | None = None, callbacks: Any = None, snapshot: ProviderConfig | None = None) -> Any:
+    """Construct the configured LangChain chat model.
 
     Args:
-        model_name: Optional override for the configured model.
+        snapshot: Resolved immutable config; defaults to current settings.
+        model_name: Model name; defaults to LANGCHAIN_MODEL_NAME.
         callbacks: Optional LangChain callbacks.
 
     Returns:
-        Provider adapter consumed by ChatLLM and other existing LLM callers.
+        Provider-specific LangChain chat model.
+
+    Raises:
+        RuntimeError: If langchain-openai is missing or LANGCHAIN_MODEL_NAME is unset.
+        ValueError: If a Moonshot kimi-k3.1 configuration carries a
+            ``LANGCHAIN_REASONING_EFFORT`` outside the published
+            low/high/max set.
     """
-    from src.providers import llm as compat
-    from src.providers.factory import build_adapter
+    from src.providers import adapters
 
-    compat._sync_provider_env()
-    cfg = compat.get_env_config().llm
-    route = resolve_route(cfg.langchain_provider, model_name or cfg.langchain_model_name.strip())
-    return build_adapter(route, model_name=model_name, callbacks=callbacks)
+    snapshot = snapshot or resolve_config(model_name=model_name)
+    name = model_name or snapshot.model
+    if not name:
+        raise RuntimeError("LANGCHAIN_MODEL_NAME is not set")
+    provider = snapshot.provider
+    caps = get_provider_capabilities(provider, name)
+    options = snapshot.options
+    temperature = options.langchain_temperature
+    if snapshot.backend == "openai_codex":
+        from src.providers.openai_codex import OpenAICodexLLM
 
+        effort = options.langchain_reasoning_effort.strip().lower()
+        return OpenAICodexLLM(
+            model=name,
+            temperature=temperature,
+            timeout=options.timeout_seconds,
+            reasoning_effort=effort or None,
+            codex_url=snapshot.base_url,
+        )
 
-def catalog() -> list[dict[str, Any]]:
-    """Return public provider metadata without loading SDKs or credentials."""
-    return provider_catalog()
+    if snapshot.backend == "copilot":
+        from src.providers.copilot_auth import CopilotSDKLLM
+
+        return CopilotSDKLLM(model=name, timeout=options.timeout_seconds, token=snapshot.api_key)
+
+    if snapshot.backend == "claude_cli":
+        from src.providers.claude_cli import ClaudeCliLLM
+
+        return ClaudeCliLLM(
+            model=name,
+            timeout=options.timeout_seconds,
+            reasoning_effort=options.langchain_reasoning_effort.strip().lower(),
+            environment=dict(snapshot.environment),
+        )
+
+    if snapshot.backend == "anthropic":
+        return adapters._build_anthropic(
+            model=name,
+            temperature=temperature,
+            callbacks=callbacks,
+            snapshot=snapshot,
+            effort=options.langchain_reasoning_effort.strip().lower(),
+        )
+
+    if snapshot.backend == "deepseek":
+        adapter_mode = adapters._deepseek_adapter_mode(options.vibe_trading_deepseek_adapter)
+        if adapter_mode != "openai-compatible":
+            native_llm = adapters._build_native_deepseek(
+                model=name,
+                temperature=temperature,
+                callbacks=callbacks,
+                snapshot=snapshot,
+            )
+            if native_llm is not None:
+                return native_llm
+            if adapter_mode == "native":
+                raise RuntimeError("VIBE_TRADING_DEEPSEEK_ADAPTER=native requires langchain-deepseek")
+
+    if adapters.ChatOpenAI is None:
+        raise RuntimeError("langchain-openai is not installed")
+    # MiniMax requires temperature in (0.0, 1.0] — clamp to 0.01 when the
+    # default 0.0 is used to avoid an API validation error.
+    if provider == "minimax" and temperature <= 0.0:
+        temperature = 0.01
+    # Kimi reasoning models reject any temperature other than 1
+    # ("invalid temperature: only 1 is allowed for this model").
+    if (
+        caps.name in {"moonshot", "kimi-coding"}
+        and adapters._KIMI_FORCED_TEMPERATURE_RE.match(name)
+        and temperature != 1.0
+    ):
+        adapters.logger.info("Forcing temperature=1.0 for %s (provider requirement)", name)
+        temperature = 1.0
+    effort = options.langchain_reasoning_effort.strip().lower()
+    # Moonshot/DeepSeek official APIs emit reasoning by default and ignore this field.
+    configured_responses_api = options.langchain_use_responses_api
+    use_responses_api = adapters.uses_responses_api(
+        provider, configured_responses_api, options.vibe_trading_deepseek_adapter
+    )
+    adapters._validate_moonshot_reasoning_effort(caps, name, effort, snapshot.base_url)
+    api_key = snapshot.api_key
+    adapters._validate_authorization_credential(api_key, source=caps.api_key_env or "provider credential")
+    kwargs: dict[str, Any] = {
+        "model": name,
+        "api_key": api_key,
+        "base_url": snapshot.base_url or None,
+        "temperature": temperature,
+        "timeout": options.timeout_seconds,
+        "max_retries": options.max_retries,
+        "callbacks": callbacks,
+        # Ask for real token usage on streamed calls (issue #1224); endpoints
+        # that reject stream_options self-heal in _stream_with_usage_fallback.
+        "stream_usage": True,
+        "output_version": "responses/v1" if use_responses_api else None,
+        "use_responses_api": use_responses_api,
+        "reasoning": ({"effort": effort} if use_responses_api and effort else None),
+        "extra_body": (
+            {"reasoning": {"effort": effort}}
+            if effort and not use_responses_api and caps.openrouter_reasoning_body
+            else None
+        ),
+        "reasoning_effort": (
+            effort
+            if (
+                effort
+                and not use_responses_api
+                and adapters._sends_top_level_reasoning_effort(caps, name, snapshot.base_url)
+            )
+            else None
+        ),
+        "vibe_provider": provider,
+        "vibe_api_key": api_key,
+        "vibe_environment": snapshot.environment,
+        "openai_proxy": snapshot.environment.get("OPENAI_PROXY", ""),
+        "organization": snapshot.environment.get("OPENAI_ORG_ID")
+        or snapshot.environment.get("OPENAI_ORGANIZATION", ""),
+    }
+    langchain_max_tokens = options.langchain_max_tokens
+    if langchain_max_tokens:
+        kwargs["max_tokens"] = langchain_max_tokens
+    if caps.default_headers:
+        headers = dict(caps.default_headers)
+        if caps.name in {"moonshot", "kimi-coding"}:
+            custom_ua = options.moonshot_user_agent.strip()
+            if custom_ua:
+                headers["User-Agent"] = custom_ua
+        adapters._validate_explicit_headers(headers, source=f"{caps.name} provider configuration")
+        kwargs["default_headers"] = headers
+    disable_proxy = options.vibe_trading_disable_http_proxy
+    if provider == "custom":
+        # Imported here: the guard needs httpx/httpcore/anyio, and the
+        # background-tool lifecycle checks import this module without them.
+        from src.providers.endpoint_guard import build_public_only_clients, proxy_applies
+    if provider == "custom" and (disable_proxy or not proxy_applies(snapshot.base_url)):
+        # A saved custom endpoint is re-checked on every connection, so a
+        # host that re-resolves to a private address later is refused.
+        sync_client, async_client = build_public_only_clients()
+        kwargs["http_client"] = sync_client
+        kwargs["http_async_client"] = async_client
+        kwargs["vibe_owned_http_clients"] = (sync_client, async_client)
+    elif disable_proxy:
+        sync_client, async_client = adapters._build_proxy_free_http_clients()
+        kwargs["http_client"] = sync_client
+        kwargs["http_async_client"] = async_client
+        kwargs["vibe_owned_http_clients"] = (sync_client, async_client)
+    return adapters.ChatOpenAIWithReasoning(**kwargs)

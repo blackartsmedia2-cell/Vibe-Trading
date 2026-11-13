@@ -1,6 +1,7 @@
 """Tests for the custom OpenAI-compatible provider manager."""
 
 from __future__ import annotations
+from src.providers import connections
 
 import json
 from pathlib import Path
@@ -70,12 +71,12 @@ def test_custom_provider_dns_target_rejects_non_public_resolution(
     monkeypatch: pytest.MonkeyPatch, resolved: str
 ) -> None:
     monkeypatch.setattr(
-        custom_provider_routes.socket,
+        connections.socket,
         "getaddrinfo",
         lambda *_args, **_kwargs: [(None, None, None, "", (resolved, 0))],
     )
     with pytest.raises(ValueError, match="resolves to a local or private network address"):
-        custom_provider_routes._reject_private_dns_targets("https://provider.example/v1")
+        connections._reject_private_dns_targets("https://provider.example/v1")
 
 
 def test_store_never_serializes_api_key(tmp_path: Path) -> None:
@@ -166,7 +167,7 @@ def test_activation_requires_explicit_confirmation(
         model="glm-5.3-flash",
         api_key="secret-key",
     )
-    monkeypatch.setattr(custom_provider_routes, "_activate_profile", lambda profile: {"status": "ok"})
+    monkeypatch.setattr(custom_provider_routes, "activate_custom_provider", lambda profile, **kwargs: {"status": "ok"})
 
     response = client.post(
         "/settings/custom-providers/hilinkup/activate",
@@ -248,16 +249,16 @@ def test_full_completion_url_normalizes_to_the_runtime_api_root():
 
 def test_failed_activation_keeps_previous_profile(custom_store, tmp_path, monkeypatch):
     from src.api import settings_routes
-    from fastapi import HTTPException
+    from src.providers.settings import SettingsStore
 
     for name in ("first", "second"):
         custom_store.save(profile_id=name, label=name, base_url=f"https://{name}.test/v1", model=name, api_key=f"{name}-key")
     custom_store.activate("first")
-    def fail_write(_):
-        raise HTTPException(status_code=503, detail="Unable to save settings")
-    monkeypatch.setattr(settings_routes, "_persist_settings_updates", fail_write)
-    with pytest.raises(HTTPException):
-        settings_routes.activate_custom_provider(custom_store.get("second"), store=custom_store)
+    def fail_write(self, _, **kwargs):
+        raise OSError("Unable to save settings")
+    monkeypatch.setattr(SettingsStore, "persist", fail_write)
+    with pytest.raises(OSError):
+        connections.activate_custom_provider("second", store=custom_store)
     assert custom_store._read()["active_id"] == "first"
 
 
@@ -270,8 +271,8 @@ def test_real_completion_transport_redacts_key_and_sends_expected_request(monkey
     def handle(request):
         seen.append(request)
         return httpx.Response(200, json={"choices": [{"message": {"content": "OK synthetic-secret"}}]})
-    monkeypatch.setattr(custom_provider_routes, "_reject_private_dns_targets", lambda _: None)
-    monkeypatch.setattr(custom_provider_routes, "_provider_async_client", lambda _url: actual_client(transport=httpx.MockTransport(handle)))
+    monkeypatch.setattr(connections, "_reject_private_dns_targets", lambda _: None)
+    monkeypatch.setattr(connections, "_provider_async_client", lambda _url: actual_client(transport=httpx.MockTransport(handle)))
     result = asyncio.run(custom_provider_routes._perform_completion_test(base_url="https://example.test/v1", model="demo", api_key="synthetic-secret"))
     assert result["response_preview"] == "OK [redacted]"
     assert str(seen[0].url) == "https://example.test/v1/chat/completions"
@@ -287,3 +288,21 @@ def test_cli_custom_commands_are_registered():
     assert result.returncode == 0
     assert "activate" in result.stdout
     assert "add" in result.stdout
+
+
+def test_activation_write_failure_is_actionable_and_rolls_back(client, custom_store, monkeypatch):
+    from src.providers.settings import SettingsStore
+
+    custom_store.save(profile_id='first', label='First', base_url='https://first.test/v1', model='first', api_key='key')
+    custom_store.save(profile_id='second', label='Second', base_url='https://second.test/v1', model='second', api_key='key')
+    custom_store.activate('first')
+
+    def fail_write(self, updates, **kwargs):
+        raise PermissionError('private filesystem path')
+
+    monkeypatch.setattr(SettingsStore, 'persist', fail_write)
+    response = client.post('/settings/custom-providers/second/activate', json={'confirm': True})
+    assert response.status_code == 503
+    assert 'check ownership and permissions' in response.json()['detail']
+    assert 'private filesystem path' not in response.text
+    assert custom_store._read()['active_id'] == 'first'

@@ -9,6 +9,7 @@ iteration immediately so the UI flips to "Reasoning…" without delay.
 """
 
 from __future__ import annotations
+import os
 
 from pathlib import Path
 from typing import Any, Callable
@@ -113,6 +114,10 @@ def test_provider_waiting_reaches_loop_without_answer_or_reasoning(tmp_path):
                 yield AIMessageChunk(content="", additional_kwargs={"provider_waiting": True})
             yield AIMessageChunk(content="Done.")
     llm = ChatLLM.__new__(ChatLLM)
+    from src.providers.configuration import resolve_config
+    from src.providers.chat import LLMRuntimeSnapshot
+    llm.config = resolve_config(environment=dict(os.environ))
+    llm.runtime_snapshot = LLMRuntimeSnapshot(llm.config.provider, llm.config.model, "")
     llm._llm, llm.model_name = Provider(), "test-waiting"
     events = []
     result = _build_agent(llm, events, tmp_path / "waiting").run(user_message="say done")

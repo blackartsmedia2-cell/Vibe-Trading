@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 
@@ -94,6 +95,14 @@ def test_a_model_named_in_several_stream_chunks_is_not_doubled() -> None:
             )
 
     llm = ChatLLM.__new__(ChatLLM)
+
+    from src.providers.configuration import resolve_config
+
+    from src.providers.chat import LLMRuntimeSnapshot
+
+    llm.config = resolve_config(environment=dict(os.environ))
+
+    llm.runtime_snapshot = LLMRuntimeSnapshot(llm.config.provider, llm.config.model, "")
     llm._llm, llm.model_name = Provider(), "deepseek/deepseek-v4-pro"
     response = llm.stream_chat(
         [{"role": "user", "content": "hi"}], on_text_chunk=lambda _: None

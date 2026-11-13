@@ -15,9 +15,9 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from src.config.accessor import get_env_config
 from src.providers.content_filter import is_content_filter_triggered
-from src.providers.llm import build_llm
+from src.providers.gateway import build_llm
+from src.providers.configuration import ProviderConfig, resolve_config
 from src.providers.stream_guard import StreamInterrupted, supervised_pulls
 from src.providers.tool_policy import offered_tools
 
@@ -169,7 +169,7 @@ def _extract_retry_after_s(original: Exception) -> Optional[float]:
 class ProviderStreamError(RuntimeError):
     """Raised when provider streaming fails before a complete response."""
 
-    def __init__(self, *, provider: str, model: str, original: Exception, usage_metadata: dict | None = None) -> None:
+    def __init__(self, *, provider: str, model: str, original: Exception, usage_metadata: dict | None = None, secrets: tuple[str, ...] = ()) -> None:
         """Initialize a provider-contextual stream error.
 
         Args:
@@ -190,6 +190,9 @@ class ProviderStreamError(RuntimeError):
         self.status_code: Optional[int] = getattr(original, "status_code", None)
         self.retry_after_s: Optional[float] = _extract_retry_after_s(original)
         safe_message = _redact_provider_error(str(original))
+        for secret in secrets:
+            if secret:
+                safe_message = safe_message.replace(secret, "[redacted]")
         hint = ""
         lowered = safe_message.lower()
         if any(m in lowered for m in ("<!doctype html", "<html", "__next_error__")):
@@ -345,22 +348,19 @@ class ChatLLM:
         model_name: Model name.
     """
 
-    def __init__(self, model_name: Optional[str] = None) -> None:
+    def __init__(self, model_name: Optional[str] = None, *, snapshot: ProviderConfig | None = None) -> None:
         """Initialize ChatLLM.
 
         Args:
             model_name: Model name; defaults to the environment variable value.
         """
-        self._llm = build_llm(model_name=model_name)
-        runtime_cfg = get_env_config().llm
-        configured_model = (
-            model_name or runtime_cfg.langchain_model_name
-        ).strip()
-        self.model_name = configured_model
+        self.config = snapshot or resolve_config(model_name=model_name)
+        self._llm = build_llm(model_name=model_name, snapshot=self.config)
+        self.model_name = model_name or self.config.model
         self.runtime_snapshot = LLMRuntimeSnapshot(
-            provider=runtime_cfg.langchain_provider.strip().lower() or "openai",
-            configured_model=configured_model,
-            reasoning_effort=runtime_cfg.langchain_reasoning_effort.strip().lower(),
+            provider=self.config.provider or "openai",
+            configured_model=self.model_name,
+            reasoning_effort=self.config.options.langchain_reasoning_effort.strip().lower(),
         )
 
     def close(self) -> None:
@@ -413,7 +413,7 @@ class ChatLLM:
         """
         if getattr(self._llm, "_llm_type", None) != _DIRECT_ANTHROPIC_LLM_TYPE:
             return messages, {}
-        if get_env_config().llm.vibe_trading_anthropic_prompt_cache is not True:
+        if self.config.options.vibe_trading_anthropic_prompt_cache is not True:
             return messages, {}
         prepared = prompt_cache_messages(messages)
         if prepared is messages:
@@ -621,11 +621,11 @@ class ChatLLM:
                 if cancelled_usage is not None:
                     response.usage_metadata = cancelled_usage
                 return response
-            _cfg = get_env_config()
-            provider = _cfg.llm.langchain_provider.strip().lower() or "openai"
-            model = self.model_name or _cfg.llm.langchain_model_name.strip() or "(unset)"
+            provider = self.runtime_snapshot.provider
+            model = self.model_name or "(unset)"
             raise ProviderStreamError(
                 provider=provider, model=model,
+                secrets=(self.config.api_key, self.config.auth_token),
                 original=TimeoutError(f"provider stream stopped: {stop.reason}"),
                 usage_metadata=getattr(accumulated, "usage_metadata", None),
             ) from stop
@@ -640,11 +640,11 @@ class ChatLLM:
                     type(exc).__name__,
                 )
                 return self._parse_response(llm.invoke(messages, config=config, **call_kwargs))
-            _cfg = get_env_config()
-            provider = _cfg.llm.langchain_provider.strip().lower() or "openai"
-            model = self.model_name or _cfg.llm.langchain_model_name.strip() or "(unset)"
+            provider = self.runtime_snapshot.provider
+            model = self.model_name or "(unset)"
             raise ProviderStreamError(
-                provider=provider, model=model, original=exc,
+                provider=provider, model=model,
+                secrets=(self.config.api_key, self.config.auth_token), original=exc,
                 usage_metadata=(getattr(exc, "usage_metadata", None)
                                 or getattr(accumulated, "usage_metadata", None)),
             ) from exc

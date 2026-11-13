@@ -1,6 +1,7 @@
 """Regression tests for local settings API endpoints."""
 
 from __future__ import annotations
+from src.providers import settings as provider_settings
 
 import os
 from pathlib import Path
@@ -351,7 +352,7 @@ def test_settings_write_permission_error_is_actionable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        api_server,
+        provider_settings,
         "_write_env_values",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
     )
@@ -610,7 +611,7 @@ def test_atomic_write_secret_is_crash_safe(
 ) -> None:
     """A crash during the replace must not corrupt or truncate the secret file,
     nor leave a stray temp file holding the secret behind."""
-    from src.api import helpers
+    from src.config import dotenv as helpers
 
     target = tmp_path / ".env"
     target.write_text("OLD=1\n", encoding="utf-8")
@@ -631,7 +632,7 @@ def test_atomic_write_secret_is_crash_safe(
 
 def test_atomic_write_secret_creates_0600_file(tmp_path: Path) -> None:
     """Fresh secret files are created owner-only via the atomic path."""
-    from src.api import helpers
+    from src.config import dotenv as helpers
 
     target = tmp_path / ".env"
     helpers._atomic_write_secret(target, "KEY=value\n")
@@ -645,7 +646,7 @@ def test_atomic_write_secret_supports_platforms_without_fchmod(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Windows must be able to persist Web UI settings without ``os.fchmod``."""
-    from src.api import helpers
+    from src.config import dotenv as helpers
 
     monkeypatch.delattr(helpers.os, "fchmod", raising=False)
     target = tmp_path / ".env"

@@ -7,7 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-from src.providers.gateway import catalog, resolve_route
+from src.providers.gateway import catalog
+from src.providers.configuration import resolve_config
 from src.providers.capabilities import get_provider_capabilities
 
 
@@ -31,15 +32,15 @@ def test_catalog_projects_the_same_connection_to_every_surface():
 
 
 def test_model_inference_does_not_change_explicit_adapter_family():
-    route = resolve_route("openrouter", "anthropic/claude-test")
+    route = resolve_config(environment={"LANGCHAIN_PROVIDER": "openrouter", "LANGCHAIN_MODEL_NAME": "anthropic/claude-test"})
     assert route.backend == "openai_compatible"
-    assert route.capabilities.name == "openrouter"
-    route = resolve_route("openai", "deepseek-test")
+    assert get_provider_capabilities(route.provider, route.model).name == "openrouter"
+    route = resolve_config(environment={"LANGCHAIN_PROVIDER": "openai", "LANGCHAIN_MODEL_NAME": "deepseek-test"})
     assert route.backend == "openai_compatible"
-    assert route.capabilities.name == "deepseek"
-    assert resolve_route("openai_codex", "test").backend == "openai_codex"
-    assert resolve_route("github-copilot", "test").backend == "copilot"
-    assert resolve_route("unknown-legacy-relay", "test").backend == "openai_compatible"
+    assert get_provider_capabilities(route.provider, route.model).name == "deepseek"
+    assert resolve_config(environment={"LANGCHAIN_PROVIDER": "openai_codex", "LANGCHAIN_MODEL_NAME": "test"}).backend == "openai_codex"
+    assert resolve_config(environment={"LANGCHAIN_PROVIDER": "github-copilot", "LANGCHAIN_MODEL_NAME": "test"}).backend == "copilot"
+    assert resolve_config(environment={"LANGCHAIN_PROVIDER": "unknown-legacy-relay", "LANGCHAIN_MODEL_NAME": "test"}).backend == "openai_compatible"
 
 
 def test_catalog_callers_cannot_mutate_gateway_configuration():

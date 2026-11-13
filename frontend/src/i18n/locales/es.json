@@ -555,7 +555,7 @@
     "subtitle": "Configura las credenciales del modelo y los tokens de fuentes de datos de mercado para este proyecto local.",
     "unavailable": "La configuración no está disponible",
     "llmSettings": "Configuración del LLM",
-    "llmSettingsDesc": "Elige el modelo que usará el agente y guárdalo en el archivo agent/.env local del proyecto.",
+    "llmSettingsDesc": "Elige el modelo que usará el agente y guárdalo en ~/.vibe-trading/.env.",
     "connection": "Conexión",
     "model": "Modelo",
     "useProviderDefaults": "Usar valores predeterminados del proveedor",

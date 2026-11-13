@@ -7,6 +7,8 @@ csi300 universe failed with "TUSHARE_TOKEN not in agent/.env or environment".
 
 from __future__ import annotations
 
+from src.providers import configuration as _provider_configuration
+
 import argparse
 import os
 
@@ -180,8 +182,8 @@ def test_load_cli_env_reads_dotenv_file(monkeypatch, tmp_path):
     token = "cli_dotenv_regression_token"
     dotenv.write_text(f"TUSHARE_TOKEN={token}\n", encoding="utf-8")
     monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
-    monkeypatch.setattr(llm, "_ENV_CANDIDATES", [dotenv])
-    monkeypatch.setattr(llm, "_dotenv_loaded", False)
+    monkeypatch.setattr(_provider_configuration, "_ENV_CANDIDATES", [dotenv])
+    monkeypatch.setattr(_provider_configuration, "_dotenv_loaded", False)
 
     try:
         cli_handlers._load_cli_env()

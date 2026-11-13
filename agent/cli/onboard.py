@@ -14,8 +14,6 @@ directly so Esc / Left-arrow can be bound to a back-step sentinel.
 
 from __future__ import annotations
 
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Final, Sequence
@@ -71,59 +69,25 @@ def _env_path() -> Path: return _env_dir() / ".env"
 def _partial_path() -> Path: return _env_dir() / ".env.partial"
 
 
-def _render_env(values: dict[str, str]) -> str:
-    """Render values as a stable ``.env`` body (KEY=value lines)."""
-    return "\n".join(f"{k}={v}" for k, v in values.items() if v) + "\n"
+from src.config.dotenv import _atomic_write_secret, render_env as _render_env
+from src.providers.settings import SettingsStore
 
 
 def _save_partial(values: dict[str, str]) -> None:
-    """Best-effort atomic write to ``.env.partial`` (crash-resilience nicety).
-
-    Mirrors :func:`_finalize`: ``mkstemp`` creates the temp file 0600-only, so
-    the mode is never applied to an already-visible file, and ``replace`` swaps
-    it in atomically. Writing to the destination directly would defeat the whole
-    point of the file — unlinking it first, or truncating it on open, throws away
-    the recovery state this function exists to preserve if the very next write
-    fails.
-    """
+    """Save recovery state atomically; a failed save leaves the prior file intact."""
     try:
         _env_dir().mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=".env.partial.", dir=str(_env_dir()))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(_render_env(values))
-            Path(tmp_name).replace(_partial_path())
-        finally:
-            try:
-                Path(tmp_name).unlink()
-            except (FileNotFoundError, OSError):
-                pass
+        _atomic_write_secret(_partial_path(), _render_env(values), allow_in_place=False)
     except OSError:
         pass
 
 
 def _finalize(values: dict[str, str]) -> Path:
-    """Atomically write ``.env``. Returns the final path."""
-    _env_dir().mkdir(parents=True, exist_ok=True)
-    content = _render_env(values)
-    fd, tmp_name = tempfile.mkstemp(prefix=".env.", dir=str(_env_dir()))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        tmp_path = Path(tmp_name)
-        try:
-            tmp_path.chmod(0o600)
-        except OSError:
-            pass
-        tmp_path.replace(_env_path())
-    finally:
-        try:
-            Path(tmp_name).unlink()
-        except (FileNotFoundError, OSError):
-            pass
+    """Persist through the same private settings store used by API and setup."""
+    SettingsStore(path=_env_path(), legacy=_env_path()).persist(values)
     try:
         _partial_path().unlink()
-    except (FileNotFoundError, OSError):
+    except OSError:
         pass
     return _env_path()
 

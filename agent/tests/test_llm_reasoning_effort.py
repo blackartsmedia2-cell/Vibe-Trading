@@ -18,6 +18,9 @@ Responses API for endpoints that support it.
 
 from __future__ import annotations
 
+from src.providers import adapters as _provider_adapters
+from src.providers import configuration as _provider_configuration
+
 import importlib.util
 import json
 import os
@@ -42,7 +45,7 @@ def _pin_dotenv_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     developer's own ``~/.vibe-trading/.env`` and leak real provider settings
     into the assertions. ``monkeypatch`` restores the module flag afterwards.
     """
-    monkeypatch.setattr(llm_mod, "_dotenv_loaded", True)
+    monkeypatch.setattr(_provider_configuration, "_dotenv_loaded", True)
 
 
 @pytest.fixture
@@ -104,7 +107,7 @@ def _capture_kwargs(env: dict[str, str]) -> dict[str, Any]:
             captured.update(kwargs)
 
     with patch.dict(os.environ, env, clear=True):
-        with patch.object(llm_mod, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
+        with patch.object(_provider_adapters, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
             build_llm()
     return captured
 
@@ -129,7 +132,7 @@ def test_uses_responses_api_matches_provider_route(
     native_available: bool,
     expected: bool,
 ) -> None:
-    monkeypatch.setattr(llm_mod, "_native_deepseek_adapter_available", lambda: native_available)
+    monkeypatch.setattr(_provider_adapters, "_native_deepseek_adapter_available", lambda: native_available)
 
     assert uses_responses_api(provider, True, adapter) is expected
 
@@ -445,7 +448,7 @@ class TestAnthropicNativeProvider:
                 captured.update(kwargs)
 
         with patch.dict(os.environ, env, clear=True):
-            with patch.object(llm_mod, "_make_temperature_safe_anthropic", lambda _: _FakeChatAnthropic):
+            with patch.object(_provider_adapters, "_make_temperature_safe_anthropic", lambda _: _FakeChatAnthropic):
                 build_llm()
         return captured
 
@@ -541,9 +544,9 @@ class TestAnthropicNativeProvider:
         old_module = SimpleNamespace(ChatAnthropic=_OldChatAnthropic)
 
         with patch.dict(os.environ, self._env(LANGCHAIN_REASONING_EFFORT="high"), clear=True):
-            with patch.object(llm_mod, "import_module", lambda _: old_module):
+            with patch.object(_provider_adapters, "import_module", lambda _: old_module):
                 with patch.object(
-                    llm_mod,
+                    _provider_adapters,
                     "_make_temperature_safe_anthropic",
                     lambda _: _OldChatAnthropic,
                 ):

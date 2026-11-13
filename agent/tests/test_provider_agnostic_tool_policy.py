@@ -1,6 +1,7 @@
 """Provider-agnostic deny lists and bash screening (#2085)."""
 
 from __future__ import annotations
+import os
 
 import json
 import sys
@@ -72,6 +73,10 @@ class _RecordingLLM:
 
 def _chat(llm: _RecordingLLM) -> ChatLLM:
     chat = ChatLLM.__new__(ChatLLM)
+    from src.providers.configuration import resolve_config
+    from src.providers.chat import LLMRuntimeSnapshot
+    chat.config = resolve_config(environment=dict(os.environ))
+    chat.runtime_snapshot = LLMRuntimeSnapshot(chat.config.provider, chat.config.model, "")
     chat._llm = llm
     chat.model_name = "gpt-test"
     return chat

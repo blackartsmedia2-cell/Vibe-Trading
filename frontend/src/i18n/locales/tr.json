@@ -513,7 +513,7 @@
     "subtitle": "Bu yerel proje için model kimlik bilgilerini ve piyasa veri kaynağı belirteçlerini yapılandırın.",
     "unavailable": "Ayarlara erişilemiyor",
     "llmSettings": "LLM ayarları",
-    "llmSettingsDesc": "Aracının kullanacağı modeli seçin ve projenin yerel agent/.env dosyasına kaydedin.",
+    "llmSettingsDesc": "Aracının kullanacağı modeli seçin ve ~/.vibe-trading/.env dosyasına kaydedin.",
     "connection": "Bağlantı",
     "model": "Model",
     "useProviderDefaults": "Sağlayıcı varsayılanlarını kullan",

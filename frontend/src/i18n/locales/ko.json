@@ -549,7 +549,7 @@
     "subtitle": "이 로컬 프로젝트의 모델 자격 증명과 마켓 데이터 소스 토큰을 구성합니다.",
     "unavailable": "설정을 사용할 수 없습니다",
     "llmSettings": "LLM 설정",
-    "llmSettingsDesc": "에이전트가 사용할 모델을 선택하고 프로젝트 로컬 agent/.env 파일에 저장합니다.",
+    "llmSettingsDesc": "에이전트가 사용할 모델을 선택하고 ~/.vibe-trading/.env에 저장합니다.",
     "connection": "연결",
     "model": "모델",
     "useProviderDefaults": "프로바이더 기본값 사용",

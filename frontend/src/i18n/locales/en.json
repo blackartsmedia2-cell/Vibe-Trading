@@ -555,7 +555,7 @@
     "subtitle": "Configure model credentials and market data source tokens for this local project.",
     "unavailable": "Settings are unavailable",
     "llmSettings": "LLM Settings",
-    "llmSettingsDesc": "Choose the model used by the agent and save it to the project-local agent/.env file.",
+    "llmSettingsDesc": "Choose the model used by the agent and save it to ~/.vibe-trading/.env.",
     "connection": "Connection",
     "model": "Model",
     "useProviderDefaults": "Use provider defaults",

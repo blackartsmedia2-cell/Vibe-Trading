@@ -1,6 +1,7 @@
 """Regression tests for provider HTTP-client ownership."""
 
 from __future__ import annotations
+import os
 
 import asyncio
 
@@ -25,6 +26,10 @@ class _AsyncClient:
 
 def _wrapper(adapter: object) -> ChatLLM:
     llm = ChatLLM.__new__(ChatLLM)
+    from src.providers.configuration import resolve_config
+    from src.providers.chat import LLMRuntimeSnapshot
+    llm.config = resolve_config(environment=dict(os.environ))
+    llm.runtime_snapshot = LLMRuntimeSnapshot(llm.config.provider, llm.config.model, "")
     llm._llm = adapter
     return llm
 

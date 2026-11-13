@@ -65,8 +65,8 @@ ISOLATION_ARGS = (
 _STRIPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
 
 
-def child_env() -> dict[str, str]:
-    return {k: v for k, v in os.environ.items() if k not in _STRIPPED_ENV}
+def child_env(environment: dict[str, str] | None = None) -> dict[str, str]:
+    return {k: v for k, v in (os.environ if environment is None else environment).items() if k not in _STRIPPED_ENV}
 
 
 _PROTOCOL = (
@@ -89,7 +89,7 @@ _FINAL_ONLY = (
 _FALLBACK_CLI_PATH = Path.home() / ".local" / "bin" / "claude"
 
 
-def resolve_claude_cli() -> str:
+def resolve_claude_cli(environment: dict[str, str] | None = None) -> str:
     """Return the ``claude`` executable: ``CLAUDE_CLI_PATH``, PATH, then ``~/.local/bin``.
 
     Returns:
@@ -98,10 +98,10 @@ def resolve_claude_cli() -> str:
     Raises:
         RuntimeError: No executable was found.
     """
-    explicit = get_env_config().llm.claude_cli_path.strip()
+    explicit = (get_env_config().llm.claude_cli_path if environment is None else environment.get("CLAUDE_CLI_PATH", "")).strip()
     if explicit:
         return explicit
-    found = shutil.which("claude")
+    found = shutil.which("claude") if environment is None else shutil.which("claude", path=environment.get("PATH", ""))
     if found:
         return found
     if _FALLBACK_CLI_PATH.is_file():
@@ -265,6 +265,7 @@ def _run_cli(
     effort: str = "",
     timeout: float,
     cancel_event: threading.Event,
+    environment: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run one ``claude -p`` turn and return its parsed JSON result."""
     fd, system_path = tempfile.mkstemp(prefix="vibe-claude-cli-", suffix=".md")
@@ -275,7 +276,7 @@ def _run_cli(
         # the model's own default in place.
         effort_args = ["--effort", effort] if effort in CLAUDE_CLI_EFFORT_LEVELS else []
         cmd = [
-            resolve_claude_cli(),
+            resolve_claude_cli() if environment is None else resolve_claude_cli(environment),
             "-p",
             *ISOLATION_ARGS,
             "--output-format",
@@ -288,7 +289,7 @@ def _run_cli(
             "--json-schema",
             json.dumps(_schema(allow_tools)),
         ]
-        env = child_env()
+        env = child_env() if environment is None else child_env(environment)
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -381,6 +382,7 @@ def _decide(
     tools: list[dict[str, Any]],
     timeout: float,
     cancel_event: threading.Event,
+    environment: dict[str, str] | None = None,
 ) -> Optional[_Decision]:
     """Ask the CLI for the next step; refused calls are fed back for a new choice.
 
@@ -413,6 +415,7 @@ def _decide(
                 effort=effort,
                 timeout=remaining,
                 cancel_event=cancel_event,
+                **({"environment": environment} if environment is not None else {}),
             )
         except Exception as exc:
             exc.usage_metadata = decision.usage
@@ -496,6 +499,7 @@ class ClaudeCliLLM:
         timeout: int = 120,
         reasoning_effort: str = "",
         tools: list[dict[str, Any]] | None = None,
+        environment: dict[str, str] | None = None,
     ) -> None:
         """Configure one CLI-backed model.
 
@@ -512,6 +516,7 @@ class ClaudeCliLLM:
                 the error surfaces before a paid turn rather than after one.
         """
         bash_policy()
+        self.environment = None if environment is None else dict(environment)
         self.model = model
         self.timeout = timeout
         self.reasoning_effort = reasoning_effort
@@ -531,6 +536,7 @@ class ClaudeCliLLM:
             timeout=self.timeout,
             reasoning_effort=self.reasoning_effort,
             tools=tools,
+            environment=self.environment,
         )
 
     def _budget(self, config: Optional[dict[str, Any]]) -> float:
@@ -571,6 +577,7 @@ class ClaudeCliLLM:
             tools=self.tools,
             timeout=self._budget(config),
             cancel_event=threading.Event(),
+            **({"environment": self.environment} if self.environment is not None else {}),
         )
         return self._message(decision or _Decision())
 
@@ -602,6 +609,7 @@ class ClaudeCliLLM:
                     tools=self.tools,
                     timeout=budget,
                     cancel_event=cancel_event,
+                    **({"environment": self.environment} if self.environment is not None else {}),
                 )
                 if decision is not None:
                     chunks.put(

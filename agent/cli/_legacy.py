@@ -5849,52 +5849,7 @@ def _validate_api_key(api_key: str, expected_prefix: str | None) -> bool:
     return api_key.startswith(expected_prefix)
 
 
-def _render_env_content(config: dict[str, str]) -> str:
-    """Render .env content with stable ordering."""
-    ordered_keys = [
-        "LANGCHAIN_TEMPERATURE",
-        "LANGCHAIN_PROVIDER",
-        "OPENROUTER_API_KEY",
-        "OPENROUTER_BASE_URL",
-        "DEEPSEEK_API_KEY",
-        "DEEPSEEK_BASE_URL",
-        "NVIDIA_API_KEY",
-        "NVIDIA_BASE_URL",
-        "OPENAI_API_KEY",
-        "OPENAI_BASE_URL",
-        "OPENAI_CODEX_BASE_URL",
-        "GEMINI_API_KEY",
-        "GEMINI_BASE_URL",
-        "GROQ_API_KEY",
-        "GROQ_BASE_URL",
-        "NOVITA_API_KEY",
-        "NOVITA_BASE_URL",
-        "DASHSCOPE_API_KEY",
-        "DASHSCOPE_BASE_URL",
-        "ZHIPU_API_KEY",
-        "ZHIPU_BASE_URL",
-        "MOONSHOT_API_KEY",
-        "MOONSHOT_BASE_URL",
-        "MINIMAX_API_KEY",
-        "MINIMAX_BASE_URL",
-        "MIMO_API_KEY",
-        "MIMO_BASE_URL",
-        "SPARK_API_KEY",
-        "SPARK_BASE_URL",
-        "ZAI_API_KEY",
-        "ZAI_BASE_URL",
-        "OLLAMA_BASE_URL",
-        "LANGCHAIN_MODEL_NAME",
-        "TUSHARE_TOKEN",
-        "TIMEOUT_SECONDS",
-        "MAX_RETRIES",
-    ]
-    lines: list[str] = []
-    for key in ordered_keys:
-        value = config.get(key)
-        if value:
-            lines.append(f"{key}={value}")
-    return "\n".join(lines) + "\n"
+from src.config.dotenv import render_env as _render_env_content
 
 
 from src.memory.persistent import MEMORY_TYPES  # noqa: E402  source-of-truth for choices/invariants
@@ -6118,12 +6073,9 @@ def cmd_init() -> int:
     if tushare_token:
         env_values["TUSHARE_TOKEN"] = tushare_token
 
-    _INIT_ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _INIT_ENV_PATH.write_text(_render_env_content(env_values), encoding="utf-8")
-    try:
-        _INIT_ENV_PATH.chmod(0o600)
-    except OSError:
-        pass
+    from src.providers.settings import SettingsStore
+
+    SettingsStore(path=_INIT_ENV_PATH, legacy=_INIT_ENV_PATH).persist(env_values)
 
     next_steps = Table.grid(expand=True)
     next_steps.add_column(width=10, style="dim")

@@ -68,8 +68,8 @@ def test_connector_path_resolves_longbridge_credentials_from_dotenv(
 
     for name in _CREDENTIAL_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("src.providers.llm._ENV_CANDIDATES", [env_file])
-    monkeypatch.setattr("src.providers.llm._dotenv_loaded", False)
+    monkeypatch.setattr("src.providers.configuration._ENV_CANDIDATES", [env_file])
+    monkeypatch.setattr("src.providers.configuration._dotenv_loaded", False)
     monkeypatch.setattr(_legacy, "cmd_connector_list", lambda: 0)
 
     before = resolve_longbridge_credentials(runtime_root=runtime_root)
@@ -105,8 +105,8 @@ def test_dispatch_connector_never_overrides_a_real_environment_variable(
     monkeypatch.setenv("LONGBRIDGE_APP_KEY", "key-from-shell")
     monkeypatch.delenv("LONGBRIDGE_APP_SECRET", raising=False)
     monkeypatch.delenv("LONGBRIDGE_ACCESS_TOKEN", raising=False)
-    monkeypatch.setattr("src.providers.llm._ENV_CANDIDATES", [env_file])
-    monkeypatch.setattr("src.providers.llm._dotenv_loaded", False)
+    monkeypatch.setattr("src.providers.configuration._ENV_CANDIDATES", [env_file])
+    monkeypatch.setattr("src.providers.configuration._dotenv_loaded", False)
     monkeypatch.setattr(_legacy, "cmd_connector_list", lambda: 0)
 
     _legacy._dispatch_connector(argparse.Namespace(connector_command="list"))

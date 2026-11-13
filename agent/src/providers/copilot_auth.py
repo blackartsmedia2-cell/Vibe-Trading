@@ -29,7 +29,7 @@ def is_supported_token(token: str) -> bool:
     return bool(token) and token.startswith(_SUPPORTED_TOKEN_PREFIXES)
 
 
-def gh_cli_token() -> str:
+def gh_cli_token(*, stored_only: bool = False) -> str:
     """Return a supported token from ``gh auth token``, if available."""
     executable = shutil.which("gh")
     if not executable:
@@ -41,6 +41,7 @@ def gh_cli_token() -> str:
             text=True,
             timeout=10,
             check=False,
+            **({"env": {k: v for k, v in os.environ.items() if k not in {"GH_TOKEN", "GITHUB_TOKEN"}}} if stored_only else {}),
         )
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -64,9 +65,12 @@ def get_copilot_login_status() -> Optional[str]:
     return token or None
 
 
-def _client_options() -> dict[str, str]:
+def _client_options(token: str | None = None) -> dict[str, str]:
     """Return explicit SDK options without disabling stored CLI credentials."""
-    token, _source = resolve_copilot_token()
+    if token is None:
+        token, _source = resolve_copilot_token()
+    elif not token:
+        token = gh_cli_token(stored_only=True)
     return {"github_token": token} if token else {}
 
 
@@ -198,6 +202,7 @@ async def _run_copilot(
     timeout: float,
     emit: Callable[[str, str], None] | None = None,
     cancel_event: threading.Event | None = None,
+    token: str | None = None,
 ) -> _CopilotResult:
     try:
         from copilot import CopilotClient, ToolSet
@@ -265,7 +270,7 @@ async def _run_copilot(
 
     # ponytail: one runtime per call keeps lifecycle simple; pool it if startup
     # latency becomes material in profiling.
-    async with CopilotClient(**_client_options()) as client:
+    async with CopilotClient(**_client_options(token)) as client:
         sdk_tools = _convert_tools(tools)
         available_tools = ToolSet()
         for tool in sdk_tools:
@@ -338,13 +343,15 @@ class CopilotSDKLLM:
         model: str,
         timeout: int = 120,
         tools: list[dict[str, Any]] | None = None,
+        token: str | None = None,
     ) -> None:
         self.model = model
         self.timeout = timeout
         self.tools = tools or []
+        self._token = token
 
     def bind_tools(self, tools: list[dict[str, Any]]) -> "CopilotSDKLLM":
-        return CopilotSDKLLM(model=self.model, timeout=self.timeout, tools=tools)
+        return CopilotSDKLLM(model=self.model, timeout=self.timeout, tools=tools, token=self._token)
 
     def invoke(
         self,
@@ -398,6 +405,7 @@ class CopilotSDKLLM:
                 result = asyncio.run(
                     _run_copilot(
                         model=self.model,
+                        token=self._token,
                         messages=messages,
                         tools=self.tools,
                         timeout=timeout,

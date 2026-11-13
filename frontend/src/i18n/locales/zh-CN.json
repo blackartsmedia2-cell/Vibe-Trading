@@ -549,7 +549,7 @@
     "subtitle": "配置此本地项目的模型凭证和市场数据源 Token。",
     "unavailable": "设置不可用",
     "llmSettings": "LLM 设置",
-    "llmSettingsDesc": "选择智能体使用的模型，并将其保存到项目本地的 agent/.env 文件中。",
+    "llmSettingsDesc": "选择智能体使用的模型，并保存到 ~/.vibe-trading/.env。",
     "connection": "连接",
     "model": "模型",
     "useProviderDefaults": "使用提供商默认设置",

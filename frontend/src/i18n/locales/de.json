@@ -555,7 +555,7 @@
     "subtitle": "Konfigurieren Sie Modell-Anmeldeinformationen und Marktdaten-Tokens für dieses lokale Projekt.",
     "unavailable": "Einstellungen sind nicht verfügbar",
     "llmSettings": "LLM-Einstellungen",
-    "llmSettingsDesc": "Wählen Sie das vom Agenten verwendete Modell und speichern Sie es in der projektlokalen agent/.env-Datei.",
+    "llmSettingsDesc": "Wählen Sie das vom Agenten verwendete Modell und speichern Sie es in ~/.vibe-trading/.env.",
     "connection": "Verbindung",
     "model": "Modell",
     "useProviderDefaults": "Anbieterstandards verwenden",

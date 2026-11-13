@@ -555,7 +555,7 @@
     "subtitle": "Konfigurasikan kredensial model dan token sumber data pasar untuk proyek lokal ini.",
     "unavailable": "Pengaturan tidak tersedia",
     "llmSettings": "Pengaturan LLM",
-    "llmSettingsDesc": "Pilih model yang digunakan oleh Agent dan simpan ke file agent/.env lokal proyek.",
+    "llmSettingsDesc": "Pilih model yang digunakan oleh Agent dan simpan ke ~/.vibe-trading/.env.",
     "connection": "Koneksi",
     "model": "Model",
     "useProviderDefaults": "Gunakan pengaturan bawaan provider",
