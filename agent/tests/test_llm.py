@@ -753,7 +753,7 @@ class TestDisableHttpProxy:
         with patch.dict(os.environ, env, clear=True):
             with patch.object(
                 _provider_adapters,
-                "_build_proxy_free_http_clients",
+                "_build_http_clients",
                 return_value=(sync_client, async_client),
             ) as build_clients:
                 with patch.object(_provider_adapters, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
@@ -797,7 +797,7 @@ class TestDisableHttpProxy:
             "ALL_PROXY": "socks5://proxy.invalid:1080",
         }
         with patch.dict(os.environ, env, clear=False):
-            sync_client, async_client = _provider_adapters._build_proxy_free_http_clients()
+            sync_client, async_client = _provider_adapters._build_http_clients()
         try:
             assert sync_client._mounts == {}
             assert async_client._mounts == {}

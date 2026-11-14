@@ -16,7 +16,8 @@ from src.providers.settings import resolve_config
 from tests.provider_helpers import provider_server as provider_server
 
 
-def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatch, provider_server):
+@pytest.mark.parametrize("explicit_proxy", [False, True])
+def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatch, provider_server, explicit_proxy):
     """Defaults can change before construction and during concurrent requests."""
     base_url, seen = provider_server
     with ExitStack() as stack:
@@ -26,7 +27,7 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
                     "LANGCHAIN_PROVIDER": "openai",
                     "LANGCHAIN_MODEL_NAME": name,
                     "OPENAI_API_KEY": f"key-{name}",
-                    "OPENAI_BASE_URL": f"{base_url}/{name}",
+                    "OPENAI_BASE_URL": f"http://{name}.invalid/v1" if explicit_proxy else f"{base_url}/{name}",
                     "LANGCHAIN_TEMPERATURE": str(temperature),
                     "LANGCHAIN_USE_RESPONSES_API": "false",
                     "OPENAI_CUSTOM_HEADERS": f"X-Owner: {name}",
@@ -34,8 +35,8 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
                     "OPENAI_PROJECT_ID": f"project-{name}",
                     "TIMEOUT_SECONDS": "5",
                     "MAX_RETRIES": "0",
-                    "VIBE_TRADING_DISABLE_HTTP_PROXY": "1",
-                    "OPENAI_PROXY": "http://127.0.0.1:1",
+                    "VIBE_TRADING_DISABLE_HTTP_PROXY": "0" if explicit_proxy else "1",
+                    "OPENAI_PROXY": base_url if explicit_proxy else "http://127.0.0.1:1",
                 }
             )
             for name, temperature in [("before", 0.2), ("after", 0.7)]
@@ -43,6 +44,8 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
         for key in ("OPENAI_API_KEY", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID"):
             monkeypatch.setenv(key, "unrelated-new-default")
         monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Owner: leaked\nX-Leaked: secret")
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+            monkeypatch.setenv(name, "http://127.0.0.1:1")
         before_build = dict(os.environ)
         clients = [stack.enter_context(closing(ChatLLM(snapshot=snapshot))) for snapshot in snapshots]
         assert dict(os.environ) == before_build
@@ -51,7 +54,7 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
         assert {r.content for r in replies} == {"before", "after"}
         for path, headers, body in seen:
             name = body["model"]
-            assert path == f"/{name}/chat/completions"
+            assert path == (f"http://{name}.invalid/v1/chat/completions" if explicit_proxy else f"/{name}/chat/completions")
             assert headers.get_all("Authorization") == [f"Bearer key-{name}"]
             assert headers.get_all("X-Owner") == [name] and "X-Leaked" not in headers
             assert headers.get_all("OpenAI-Organization") == [f"org-{name}"]
@@ -75,7 +78,8 @@ def test_snapshot_defaults_are_explicit_immutable_and_secret_free(monkeypatch):
         snapshot.options.langchain_temperature = 1
 
 
-def test_stream_errors_keep_original_provider_and_redact_original_key(monkeypatch):
+@pytest.mark.parametrize("empty_stream", [False, True])
+def test_stream_errors_keep_original_provider_and_redact_original_key(monkeypatch, empty_stream):
     snapshot = resolve_config(
         environment={
             "LANGCHAIN_PROVIDER": "openrouter",
@@ -86,8 +90,13 @@ def test_stream_errors_keep_original_provider_and_redact_original_key(monkeypatc
 
     class Broken:
         def stream(self, *args, **kwargs):
+            if empty_stream:
+                raise ValueError("No generation chunks were returned")
             raise RuntimeError("old-private-token failed")
             yield
+
+        def invoke(self, *args, **kwargs):
+            raise RuntimeError("old-private-token failed")
 
     monkeypatch.setattr("src.providers.chat.build_llm", lambda **_: Broken())
     client = ChatLLM(snapshot=snapshot)

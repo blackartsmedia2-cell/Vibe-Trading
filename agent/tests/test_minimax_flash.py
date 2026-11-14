@@ -96,7 +96,7 @@ def requests(monkeypatch):
     )
     monkeypatch.setattr(settings, "_dotenv_loaded", True)
     monkeypatch.setattr(
-        llm, "_build_proxy_free_http_clients", lambda: (sync, async_client)
+        llm, "_build_http_clients", lambda: (sync, async_client)
     )
     for key in (
         "OPENAI_BASE_URL",

@@ -48,24 +48,27 @@ def _endpoint_model(client: Any) -> tuple[str, str, str]:
     )
 
 
-def _build_proxy_free_http_clients() -> tuple[Any, Any]:
-    """Build sync and async HTTPX clients that ignore proxy environment vars.
+def _build_http_clients(proxy: str | None = None) -> tuple[Any, Any]:
+    """Build owned HTTPX clients with explicit proxy routing (None means direct).
 
     Supplying an explicit transport prevents ``httpx.Client`` from installing
     proxy mounts discovered from HTTP(S)_PROXY.  ``trust_env`` remains enabled
     on the transports so SSL_CERT_FILE and SSL_CERT_DIR still work for private
     certificate authorities.
 
+    Args:
+        proxy: Explicit proxy URL, or None to connect directly.
+
     Returns:
         A ``(sync_client, async_client)`` pair for the OpenAI SDK.
 
     Raises:
-        RuntimeError: If HTTPX is unavailable while proxy disabling is enabled.
+        RuntimeError: If HTTPX is unavailable.
     """
     if httpx is None:
-        raise RuntimeError("VIBE_TRADING_DISABLE_HTTP_PROXY requires the httpx package")
-    sync_transport = httpx.HTTPTransport(proxy=None, trust_env=True)
-    async_transport = httpx.AsyncHTTPTransport(proxy=None, trust_env=True)
+        raise RuntimeError("Explicit provider transport requires the httpx package")
+    sync_transport = httpx.HTTPTransport(proxy=proxy, trust_env=True)
+    async_transport = httpx.AsyncHTTPTransport(proxy=proxy, trust_env=True)
     return (
         httpx.Client(transport=sync_transport),
         httpx.AsyncClient(transport=async_transport),
@@ -1526,12 +1529,15 @@ def build_llm(*, model_name: str | None = None, callbacks: Any = None, snapshot:
         # background-tool lifecycle checks import this module without them.
         from src.providers.endpoint_guard import build_public_only_clients, proxy_applies
     clients = None
-    if provider == "custom" and (disable_proxy or not proxy_applies(snapshot.base_url)):
+    explicit_proxy = snapshot.environment.get("OPENAI_PROXY", "")
+    if provider == "custom" and (disable_proxy or not (explicit_proxy or proxy_applies(snapshot.base_url))):
         # A saved custom endpoint is re-checked on every connection, so a
         # host that re-resolves to a private address later is refused.
         clients = build_public_only_clients()
     elif disable_proxy:
-        clients = _build_proxy_free_http_clients()
+        clients = _build_http_clients()
+    elif explicit_proxy:
+        clients = _build_http_clients(explicit_proxy)
     if clients:
         kwargs["http_client"], kwargs["http_async_client"] = clients
         kwargs["vibe_owned_http_clients"] = clients

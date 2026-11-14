@@ -410,9 +410,10 @@ def test_only_explicit_provider_waiting_reaches_activity_callback():
     assert response.content == "final"
 
 
+@pytest.mark.parametrize("adapter_kind", ["compatible", "native"])
 @pytest.mark.parametrize("terminal", [True, False])
 @pytest.mark.parametrize("tool_call", [True, False])
-def test_actual_chat_stream_requires_terminal_metadata(terminal, tool_call):
+def test_actual_chat_stream_requires_terminal_metadata(terminal, tool_call, adapter_kind):
     """Replay a clean EOF through the real SDK; truncated JSON is not a call."""
     import json
     import httpx
@@ -439,10 +440,13 @@ def test_actual_chat_stream_requires_terminal_metadata(terminal, tool_call):
         return httpx.Response(200, text=body, headers={"Content-Type": "text/event-stream"})
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
-        adapter = ChatOpenAIWithReasoning(model="deepseek-v4-pro", api_key="offline",
+        adapter_class = (ChatOpenAIWithReasoning if adapter_kind == "compatible"
+                         else pytest.importorskip("langchain_deepseek").ChatDeepSeek)
+        adapter = adapter_class(model="deepseek-v4-pro", api_key="offline",
                   base_url="https://example.invalid/v1", http_client=transport,
                   stream_usage=True, max_retries=0)
-        adapter._vibe_provider = "deepseek"
+        if adapter_kind == "compatible":
+            adapter._vibe_provider = "deepseek"
         client = _client(adapter)
         if terminal:
             result = client.stream_chat([{"role": "user", "content": "Calculate"}])
@@ -475,3 +479,52 @@ def test_cancelled_openai_stream_does_not_require_terminal_metadata():
         [{"role": "user", "content": "Hi"}], should_cancel=lambda: True)
     assert response.content == ""
     assert not fake.invoke_called
+
+
+@pytest.mark.parametrize("metadata,args,valid", [
+    ({"finish_reason": "tool_calls"}, '{"path":"a.txt"}', True),
+    ({"finish_reason": "length"}, '{"path":"a.txt"}', False),
+    ({"stop_reason": "max_tokens"}, '{"path":"a.txt"}', False),
+    ({"status": "incomplete"}, '{"path":"a.txt"}', False),
+    ({"finish_reason": "tool_calls"}, '{"path":"a.txt', False),
+    ({"finish_reason": "tool_calls"}, 'invalid-json', False),
+])
+def test_only_complete_tool_arguments_can_execute(metadata, args, valid):
+    from langchain_core.messages import AIMessageChunk
+
+    chunk = AIMessageChunk(content="", response_metadata=metadata, tool_call_chunks=[
+        {"id": "call-1", "index": 0, "name": "write_file", "args": args},
+    ])
+    if valid:
+        assert ChatLLM._parse_response(chunk).tool_calls[0].arguments == {"path": "a.txt"}
+    else:
+        with pytest.raises(ValueError, match="tool.call"):
+            ChatLLM._parse_response(chunk)
+    cancelled = ChatLLM._parse_response(chunk, cancelled=True)
+    assert not cancelled.has_tool_calls and cancelled.finish_reason == "stop"
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_empty_stream_fallback_keeps_cancellation_and_timeout(cancel):
+    release, stopped = threading.Event(), threading.Event()
+    fake = _FakeStreamingLLM()
+
+    def invoke(*args, **kwargs):
+        fake.invoke_called = True
+        if cancel:
+            stopped.set()
+        release.wait(2)
+        return _FakeChunk(content="late fallback")
+
+    fake.invoke = invoke
+    text = []
+    try:
+        if cancel:
+            response = _client(fake).stream_chat([], should_cancel=stopped.is_set, on_text_chunk=text.append)
+            assert not response.content and not response.tool_calls
+        else:
+            with pytest.raises(ProviderStreamError, match="idle timeout"):
+                _client(fake).stream_chat([], idle_timeout_s=0.05, on_text_chunk=text.append)
+        assert fake.invoke_called and not text
+    finally:
+        release.set()
