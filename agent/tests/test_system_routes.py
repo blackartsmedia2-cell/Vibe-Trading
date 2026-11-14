@@ -134,11 +134,12 @@ def test_readiness_helper_missing_provider(monkeypatch: pytest.MonkeyPatch):
 # ---------------------------------------------------------------------------
 
 
-def test_correlation_requires_auth_for_remote_client(monkeypatch: pytest.MonkeyPatch):
+@pytest.mark.parametrize("endpoint", ["/correlation", "/api/system/update"])
+def test_system_routes_require_auth_for_remote_client(monkeypatch: pytest.MonkeyPatch, endpoint):
     """A non-loopback caller with a configured key but no token is rejected."""
     monkeypatch.setattr(api_server, "_API_KEY", "server-secret")
     remote = TestClient(api_server.app, client=("203.0.113.9", 51000))
-    resp = remote.get("/correlation", params={"codes": "AAPL,SPY"})
+    resp = remote.get(endpoint, params={"codes": "AAPL,SPY"})
     assert resp.status_code == 401
 
 
@@ -253,3 +254,30 @@ def test_slow_analysis_does_not_block_other_api_requests(
             assert response.json()["labels"] == ["AAPL", "SPY"]
 
     asyncio.run(probe())
+
+
+@pytest.mark.parametrize("latest,available", [("99.0.0", True), ("0.0.1", False)])
+def test_update_check_preserves_install_kind(local_client, monkeypatch, latest, available):
+    from src import update
+
+    monkeypatch.setattr(update, "fetch_latest_version", lambda: latest)
+    monkeypatch.setattr(update, "detect_install_kind", lambda: "editable")
+    response = local_client.get("/api/system/update")
+    assert response.status_code == 200
+    assert response.json() == {
+        "current_version": api_server.APP_VERSION,
+        "latest_version": latest, "available": available,
+        "method": "container" if any(update.Path(p).exists() for p in ("/.dockerenv", "/run/.containerenv")) else "editable",
+    }
+
+
+def test_update_check_failure_is_not_up_to_date(local_client, monkeypatch):
+    from src import update
+
+    def unavailable():
+        raise ValueError("private upstream detail")
+
+    monkeypatch.setattr(update, "fetch_latest_version", unavailable)
+    response = local_client.get("/api/system/update")
+    assert response.status_code == 503
+    assert "private" not in response.text

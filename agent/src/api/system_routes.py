@@ -233,6 +233,15 @@ def register_system_routes(
 
     # --- Routes ---
 
+    @app.get("/api/system/update", dependencies=[Depends(host.require_local_or_auth)])
+    async def check_software_update():
+        from src.update import check_update
+
+        try:
+            return await asyncio.to_thread(check_update, _app_version)
+        except Exception:
+            raise HTTPException(503, "Could not check for updates. Try again later.") from None
+
     def _health_payload() -> HealthResponse:
         return HealthResponse(
             status="healthy",
