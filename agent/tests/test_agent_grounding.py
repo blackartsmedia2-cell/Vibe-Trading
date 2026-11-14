@@ -2294,6 +2294,28 @@ def test_valuation_concepts_can_stream_and_load_skills(tmp_path: Path, question:
 
 
 @pytest.mark.parametrize("question", [
+    "茅台估值", "贵州茅台的估值", "解释茅台估值的方法", "valuation of Moutai",
+    "Explain the valuation of Apple as a concept",
+    "什么是估值？顺便算一下茅台估值", "茅台估值，先解释企业质量和股票估值的区别",
+    "请解释企业质量和股票估值的区别，再查询茅台现价",
+    "什么是估值？以 600519.SH 为例",
+])
+def test_specific_valuation_keeps_identity_gate(tmp_path: Path, question: str) -> None:
+    """Concept wording must not exempt a named company or a mixed request."""
+    ledger = GroundingLedger(run_dir=tmp_path, user_message=question)
+    assert ledger.should_buffer_output
+    assert ledger.identity_status == ("locked" if "600519.SH" in question else "unresolved")
+    # An explicit code is already locked; a name must first be resolved.
+    if ledger.identity_status != "locked":
+        assert ledger.identity_status == "unresolved"
+        for skill in ("valuation-model", "private-company-research"):
+            decision = ledger.authorize_tool_call(
+                "load_skill", {"name": skill}, batch_authorized_symbols=(), call_id=skill,
+            )
+            assert not decision.allowed and decision.error_code == "identity_required"
+
+
+@pytest.mark.parametrize("question", [
     "茅台适合买入吗", "茅台估值", "valuation of Moutai",
     "解释企业质量和股票估值的区别",
 ])
