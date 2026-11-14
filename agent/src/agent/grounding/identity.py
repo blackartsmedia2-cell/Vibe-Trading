@@ -437,6 +437,7 @@ class ToolAuthorization:
                 "symbols": list(self.symbols),
                 "identity": dict(identity),
                 "required_action": (
+                    self.message if self.error_code == "user_market_data_restriction" else
                     "Call search_symbol in a separate assistant tool turn, wait for "
                     "its result, then reuse the exact locked symbol and venue. If the "
                     "resolver answers with a shortlist rather than one instrument, "
@@ -476,6 +477,15 @@ class _IdentityMixin:
             An allow/block decision. Resolver calls are allowed but their result
             cannot affect another call in this same batch.
         """
+        if tool_name in {"get_market_data", "get_br_market_data"} and not self.market_data_allowed:
+            return ToolAuthorization(
+                allowed=False,
+                error_code="user_market_data_restriction",
+                message=(
+                    "The user forbids fetching market data. Use existing evidence only; "
+                    "omit unsupported prices and valuation figures or state they cannot be verified."
+                ),
+            )
         if tool_name == _RESOLVER_TOOL:
             self._identity_required = True
             self._buffer_output = True

@@ -322,6 +322,37 @@ class TestRecoveryPrompts:
         assert summary["price_evidence_attempts"] == 0
 
 
+@pytest.mark.parametrize("restriction", ["不查询行情", "不要获取实时股价", "Do not fetch market data", ""])
+def test_quote_restriction_preserves_identity_and_numeric_checks(tmp_path: Path, restriction: str) -> None:
+    ledger = _ledger(tmp_path, message=f"机器人ETF估值。{restriction}")
+    draft = "562500.SS 价格 9.999 元，市盈率 18.50 倍。"
+    validation = ledger.validate_final_answer(draft)
+    assert not validation.valid
+    assert ledger.recovery_action(validation) == "search_symbol"
+    prompt = ledger.correction_prompt(validation)
+    assert ("get_market_data" in prompt) == (not restriction)
+    ledger.ingest_tool_result(
+        tool_name="search_symbol", arguments={"query": "机器人ETF"},
+        result=_resolver_payload(), call_id="resolve", success=True,
+    )
+    validation = ledger.validate_final_answer(draft)
+    assert not validation.valid
+    assert ledger.recovery_action(validation) == (None if restriction else "get_market_data")
+    for tool in ("get_market_data", "get_br_market_data"):
+        decision = ledger.authorize_tool_call(
+            tool, {"codes": ["562500.SH"]},
+            batch_authorized_symbols=ledger.authorized_symbols, call_id=tool,
+        )
+        assert decision.allowed == (not restriction)
+        if restriction:
+            assert decision.error_code == "user_market_data_restriction"
+            assert "search_symbol" not in decision.error_payload(tool, {})
+    if restriction:
+        assert "get_market_data" not in ledger.recovery_prompt("get_market_data", validation)
+        assert "9.999" not in ledger.safe_fallback()
+        assert "18.50" not in ledger.safe_fallback()
+
+
 class _FailingDraftLLM:
     """Always produces an ungrounded premium conclusion with no tool calls."""
 
@@ -356,6 +387,7 @@ def _run_direct_loop(
     llm: Any,
     max_iterations: int = 8,
     events: list[tuple[str, dict[str, Any]]] | None = None,
+    message: str = "分析机器人ETF并给出买入价",
 ) -> dict[str, Any]:
     from src.agent.loop import AgentLoop
     from src.memory.persistent import PersistentMemory
@@ -374,7 +406,20 @@ def _run_direct_loop(
     run_dir = tmp_path / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
     agent.memory.run_dir = str(run_dir)
-    return agent.run(user_message="分析机器人ETF并给出买入价")
+    return agent.run(user_message=message)
+
+
+def test_no_quote_recovery_never_releases_an_unsupported_price(tmp_path: Path) -> None:
+    from src.agent.trace import TraceWriter
+
+    llm = _FailingDraftLLM()
+    events: list[tuple[str, dict[str, Any]]] = []
+    result = _run_direct_loop(tmp_path, llm, events=events, message="562500.SH 估值，不查询行情")
+    assert result["degraded"]
+    assert "按你的要求没有查询行情" in result["content"]
+    assert "1.171" not in result["content"]
+    assert not any(e.get("type") == "grounding_recovery" for e in TraceWriter.read(tmp_path / "run"))
+    assert not any("1.171" in d.get("delta", "") for e, d in events if e == "text_delta")
 
 
 def test_loop_runs_recovery_before_fallback(

@@ -264,25 +264,13 @@ class _ReleaseMixin:
                 "as a percent is declared as a percent."
             )
         recovery = self.recovery_action(validation)
-        if recovery == _RESOLVER_TOOL:
-            lines.extend(
-                [
-                    "Instrument identity is unresolved. Call `search_symbol` for the "
-                    "candidate name in a separate tool-call turn, lock the exact canonical "
-                    "symbol and venue it returns, then call `get_market_data` before finalizing.",
-                    "Do NOT ask the user to confirm or continue while this read-only recovery "
-                    "remains available.",
-                ]
-            )
-        elif recovery == "get_market_data":
-            lines.extend(
-                [
-                    "Identity is locked but price evidence is missing. Call `get_market_data` "
-                    "for the locked canonical symbol and venue in a separate tool-call turn, "
-                    "then regenerate and re-validate the final answer.",
-                    "Do NOT ask the user to confirm or continue while this read-only recovery "
-                    "remains available.",
-                ]
+        if recovery is not None:
+            lines.append(self.recovery_prompt(recovery, validation))
+        elif not self.market_data_allowed:
+            lines.append(
+                "The user forbids fetching market data. Revise without tools, using only "
+                "existing evidence. Remove unsupported prices and valuation figures; "
+                "explain the method and missing inputs without inventing values."
             )
         else:
             lines.append(
@@ -328,7 +316,7 @@ class _ReleaseMixin:
             issue.get("code") in {"numeric_claim_unavailable", "unsourced_symbol_figures"}
             for issue in validation.issues
         ):
-            if self._price_evidence_attempts < MAX_PRICE_EVIDENCE_ATTEMPTS:
+            if self.market_data_allowed and self._price_evidence_attempts < MAX_PRICE_EVIDENCE_ATTEMPTS:
                 return "get_market_data"
         return None
 
@@ -343,15 +331,19 @@ class _ReleaseMixin:
     def recovery_prompt(self, action: str, validation: ValidationResult) -> str:
         """Build an executable next-step message for one bounded recovery turn."""
         if action == _RESOLVER_TOOL:
+            next_step = (
+                "Then call `get_market_data`. " if self.market_data_allowed else
+                "Do not fetch market data: the user forbids it. Remove unsupported figures instead. "
+            )
             return (
                 "[GROUNDING RECOVERY] Instrument identity is not yet locked and is "
                 "recoverable with read-only tools. Call `search_symbol` for the candidate "
                 "name in a separate assistant tool-call turn, lock and reuse the exact "
-                "canonical symbol and venue it returns, then call `get_market_data`. "
+                f"canonical symbol and venue it returns. {next_step}"
                 "Do NOT ask the user to confirm or continue while this read-only recovery "
                 "remains available, and do NOT finalize yet."
             )
-        if action == "get_market_data":
+        if action == "get_market_data" and self.market_data_allowed:
             return (
                 "[GROUNDING RECOVERY] Identity is locked but price evidence is missing. "
                 "Call `get_market_data` for the locked canonical symbol and venue in a "
@@ -386,6 +378,14 @@ class _ReleaseMixin:
             for code in (issue.get("code") for issue in validation.get("issues", []))
         }
         if issue_codes & _REDACTABLE_CODES and not self._analysis_completed:
+            if not self.market_data_allowed:
+                return (
+                    "按你的要求没有查询行情。当前证据不足以核验草稿中的价格或估值数字，"
+                    "这些数字未予发布；可以仅说明估值方法和所需数据。"
+                    if is_zh else
+                    "I did not fetch market data, as requested. The draft's unsupported "
+                    "prices or valuation figures were withheld; I can explain the method and required inputs."
+                )
             if is_zh:
                 return (
                     "我的回答被安全门槛拒绝:草稿引用了本会话未通过工具获取的价格数字,无法核验。"

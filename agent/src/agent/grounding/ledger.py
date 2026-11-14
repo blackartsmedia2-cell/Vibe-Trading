@@ -88,6 +88,14 @@ _VALUATION_CONCEPT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_NO_MARKET_DATA_RE = re.compile(
+    r"(?:不要|不允许|禁止|不得|无需|不)(?:再|主动|自动)?(?:查询|查|获取|拉取|抓取|补取)"
+    r"(?:实时|最新|任何)?(?:行情|股价|价格)"
+    r"|\b(?:do not|don't|must not|never)\s+(?:query|fetch|retrieve|look up)\s+"
+    r"(?:any\s+|live\s+|real-time\s+)?(?:market data|quotes?|stock prices?)\b",
+    re.IGNORECASE,
+)
+
 _ACTIONABLE_MARKET_RE = re.compile(
     r"(?:\bbuy\b|\bsell\b|\bentry\b|\btarget price\b|\bcurrent price\b|"
     r"\blatest price\b|\bprice of\b|\btrade\b|"
@@ -129,6 +137,7 @@ class GroundingLedger(
         """
         self.run_dir = Path(run_dir)
         self.user_message = user_message
+        self.market_data_allowed = not bool(_NO_MARKET_DATA_RE.search(user_message))
         self.resolution_context = ResolutionContext.from_messages(
             user_message,
             history,
