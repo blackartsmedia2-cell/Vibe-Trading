@@ -57,7 +57,8 @@
 
 ## 📰 News
 
-- **2026-11-14** 🔌 **Unified model gateway and update checks** — Agent, CLI, API and Swarm share a provider catalog and isolated client settings. Native adapters honor explicit proxy settings; cross-origin redirects are refused before credentials or request bodies can be forwarded. Web version checks and opt-in signed Desktop update handling are included; Desktop distribution still requires a configured feed and publisher certificates. Research answers keep streaming directly, without restoring numeric redaction or forced rewrites. **On `main`, for the next pip release.**
+- **2026-11-14** 🔌 **Unified LLM gateway and version checks** — Model providers now share one catalog and configuration layer across Agent, CLI, API and Swarm. Client settings stay isolated, native adapters respect explicit proxy settings, and cross-origin redirects are blocked before credentials or request bodies are forwarded.
+  Check for new versions from Web settings. Desktop gains support for signed updates with verification and recovery; distribution requires a configured update feed and publisher certificates. **On `main`, for the next pip release.**
 
 - **2026-11-13** 🛠️ **Research delivery and calculation tools** — Research answers stream without automatic numeric redaction, forced rewrites, or format-based completion gates. Interrupted committee runs preserve partial results and can resume unfinished roles while reusing completed work.
   Full market-data references feed shell-free QuantLib calculations, and committee roles share source evidence. Options Lab and `options_payoff` calculate stock-plus-options strategies and compare multiple alternatives in one call, returning explicit costs, payoff bounds, and comparison directions. Effective backtest fees and truncation/error states remain explicit; live-trading authorization limits remain in place. **Unreleased.**
