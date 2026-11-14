@@ -5852,7 +5852,7 @@ def _validate_api_key(api_key: str, expected_prefix: str | None) -> bool:
     return api_key.startswith(expected_prefix)
 
 
-from src.config.dotenv import render_env as _render_env_content
+from src.config.dotenv import render_env as _render_env_content  # noqa: F401 — legacy cli export
 
 
 from src.memory.persistent import MEMORY_TYPES  # noqa: E402  source-of-truth for choices/invariants
