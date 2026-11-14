@@ -10,7 +10,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from src.providers import adapters
+from src.providers import llm as llm_module
 from src.providers.chat import ChatLLM, ProviderStreamError
 from src.providers.settings import resolve_config
 from tests.provider_helpers import provider_server as provider_server
@@ -102,7 +102,7 @@ def test_stream_errors_keep_original_provider_and_redact_original_key(monkeypatc
 
 def test_learned_rejections_do_not_cross_endpoints_or_protocols():
     first, second = [
-        adapters.ChatOpenAIWithReasoning(
+        llm_module.ChatOpenAIWithReasoning(
             model="same-name",
             api_key="test",
             temperature=0,
@@ -110,22 +110,22 @@ def test_learned_rejections_do_not_cross_endpoints_or_protocols():
         )
         for name in ("first", "second")
     ]
-    adapters._ANTHROPIC_TEMPERATURE_UNSUPPORTED.clear()
+    llm_module._ANTHROPIC_TEMPERATURE_UNSUPPORTED.clear()
     try:
         error = RuntimeError("`temperature` is deprecated for this model.")
         assert first._remember_temperature_unsupported(error)
         assert not first._remember_temperature_unsupported(error)
         assert "temperature" not in first._get_request_payload("hello")
         assert "temperature" in second._get_request_payload("hello")
-        assert adapters._endpoint_model(first) != adapters._endpoint_model(second)
+        assert llm_module._endpoint_model(first) != llm_module._endpoint_model(second)
     finally:
-        adapters._ANTHROPIC_TEMPERATURE_UNSUPPORTED.clear()
+        llm_module._ANTHROPIC_TEMPERATURE_UNSUPPORTED.clear()
 
 
 @pytest.mark.parametrize("provider,key", [("anthropic", "snapshot-key"), ("deepseek", "snapshot-key"), ("deepseek", "")])
 def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, key):
     pytest.importorskip(f"langchain_{provider}")
-    from src.providers.adapters import build_llm
+    from src.providers.llm import build_llm
 
     snapshot = resolve_config(
         environment={
@@ -181,12 +181,12 @@ def test_no_fallback_replays_an_emitted_chunk(monkeypatch, native, asynchronous)
             _stream = stream
             _astream = astream
 
-        client = adapters._make_temperature_safe_anthropic(Base)()
+        client = llm_module._make_temperature_safe_anthropic(Base)()
         iterator = client._astream() if asynchronous else client._stream()
     else:
-        monkeypatch.setattr(adapters.ChatOpenAI, "_stream", stream)
-        monkeypatch.setattr(adapters.ChatOpenAI, "_astream", astream)
-        client = adapters.ChatOpenAIWithReasoning(model="partial", api_key="test")
+        monkeypatch.setattr(llm_module.ChatOpenAI, "_stream", stream)
+        monkeypatch.setattr(llm_module.ChatOpenAI, "_astream", astream)
+        client = llm_module.ChatOpenAIWithReasoning(model="partial", api_key="test")
         iterator = client._astream_with_usage_fallback() if asynchronous else client._stream_with_usage_fallback()
     seen = []
     with pytest.raises(RuntimeError, match="deprecated|unsupported"):

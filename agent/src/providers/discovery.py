@@ -251,7 +251,7 @@ async def _list_provider_models(
 
 async def _list_claude_cli_models(provider: LLMProviderOption, *, refresh: bool) -> LLMModelsResponse:
     """List the models the local Claude Code login can run, with their effort levels."""
-    from src.providers.claude_cli_models import list_claude_cli_models
+    from src.providers.claude_cli import list_claude_cli_models
 
     try:
         discovered = await asyncio.to_thread(list_claude_cli_models, refresh=refresh)

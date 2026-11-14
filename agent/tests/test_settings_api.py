@@ -817,18 +817,18 @@ def test_update_source_orders_rejects_unknown_market(
 def test_claude_cli_model_list_skips_base_url_checks_and_reports_effort_levels(
     client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.providers import claude_cli_models
+    from src.providers import claude_cli
 
     observed: dict[str, bool] = {}
 
     def fake_list(*, refresh: bool = False):
         observed["refresh"] = refresh
         return [
-            claude_cli_models.ClaudeCliModel("claude-sonnet-4-6", ("low", "medium", "high", "max")),
-            claude_cli_models.ClaudeCliModel("claude-haiku-4-5-20251001", ()),
+            claude_cli.ClaudeCliModel("claude-sonnet-4-6", ("low", "medium", "high", "max")),
+            claude_cli.ClaudeCliModel("claude-haiku-4-5-20251001", ()),
         ]
 
-    monkeypatch.setattr(claude_cli_models, "list_claude_cli_models", fake_list)
+    monkeypatch.setattr(claude_cli, "list_claude_cli_models", fake_list)
     response = client.post(
         "/settings/llm/models", json={"provider": "claude-cli", "refresh": True}
     )
@@ -851,12 +851,12 @@ def test_claude_cli_model_list_skips_base_url_checks_and_reports_effort_levels(
 def test_claude_cli_model_list_falls_back_when_cli_is_unavailable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.providers import claude_cli_models
+    from src.providers import claude_cli
 
     def failing_list(*, refresh: bool = False):
         raise RuntimeError("claude model list unavailable")
 
-    monkeypatch.setattr(claude_cli_models, "list_claude_cli_models", failing_list)
+    monkeypatch.setattr(claude_cli, "list_claude_cli_models", failing_list)
     response = client.post("/settings/llm/models", json={"provider": "claude-cli"})
 
     assert response.status_code == 200

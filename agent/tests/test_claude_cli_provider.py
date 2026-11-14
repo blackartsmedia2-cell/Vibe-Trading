@@ -65,7 +65,7 @@ def test_cli_config_does_not_use_or_destroy_openai_credentials(monkeypatch) -> N
 
 
 def test_build_llm_returns_cli_wrapper(monkeypatch) -> None:
-    from src.providers.adapters import build_llm
+    from src.providers.llm import build_llm
 
     use_provider(monkeypatch)
     model = build_llm()
@@ -507,7 +507,7 @@ def test_settings_report_cli_login(monkeypatch) -> None:
 
 
 def test_preflight_uses_cli_login(monkeypatch) -> None:
-    from src.providers import settings, diagnostics
+    from src.providers import settings, llm as llm_module
     from src import preflight
 
     monkeypatch.setenv("LANGCHAIN_PROVIDER", "claude-cli")
@@ -515,7 +515,7 @@ def test_preflight_uses_cli_login(monkeypatch) -> None:
     monkeypatch.setattr(settings, "_ensure_dotenv", lambda: None)
     monkeypatch.setattr(settings, "_sync_provider_env", lambda: None)
     monkeypatch.setattr(
-        diagnostics,
+        llm_module,
         "provider_diagnostics",
         lambda: {"base_url": "", "timeout_seconds": 120, "max_retries": 2, "proxy": {}},
     )

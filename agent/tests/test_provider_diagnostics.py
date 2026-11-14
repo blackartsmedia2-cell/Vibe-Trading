@@ -1,7 +1,7 @@
 """Provider capability and diagnostic regression tests."""
 
 from __future__ import annotations
-from src.providers import adapters as _provider_adapters
+from src.providers import llm as _provider_adapters
 
 from src.providers import settings as _provider_configuration
 
@@ -15,7 +15,6 @@ from src.providers.llm import build_llm, provider_diagnostics
 
 def test_provider_diagnostics_redacts_secrets_and_proxy_values() -> None:
     """Doctor output must be useful without leaking keys or proxy credentials."""
-    import src.providers.llm as llm_mod
 
     _provider_configuration._dotenv_loaded = True
     env = {
@@ -96,7 +95,6 @@ def test_novita_capabilities_use_generic_openai_path() -> None:
 
 def test_reasoning_effort_extra_body_is_openrouter_only() -> None:
     """LANGCHAIN_REASONING_EFFORT should not leak into official DeepSeek payloads."""
-    import src.providers.llm as llm_mod
 
     _provider_configuration._dotenv_loaded = True
     captured: dict = {}
@@ -122,7 +120,6 @@ def test_reasoning_effort_extra_body_is_openrouter_only() -> None:
 
 def test_kimi_user_agent_header_is_moonshot_only() -> None:
     """Kimi whitelist headers should be scoped to Moonshot/Kimi."""
-    import src.providers.llm as llm_mod
 
     _provider_configuration._dotenv_loaded = True
     captured: dict = {}
@@ -159,7 +156,6 @@ def test_kimi_user_agent_header_is_moonshot_only() -> None:
 
 def test_kimi_user_agent_respects_moonshot_user_agent_env_var() -> None:
     """MOONSHOT_USER_AGENT should override the default User-Agent header."""
-    import src.providers.llm as llm_mod
 
     _provider_configuration._dotenv_loaded = True
     captured: dict = {}
@@ -177,7 +173,6 @@ def test_kimi_user_agent_respects_moonshot_user_agent_env_var() -> None:
     }
     with patch.dict(os.environ, env, clear=True):
         with patch.object(_provider_adapters, "ChatOpenAIWithReasoning", _FakeChatOpenAI):
-            llm_mod._recent_caps = None  # ensure fresh build reads env
             build_llm()
 
     assert captured["default_headers"]["User-Agent"] == "MyCustomAgent/2.0"
@@ -211,7 +206,6 @@ def test_nvidia_provider_uses_bearer_auth_with_compatibility_user_agent() -> Non
 
 def test_nvidia_build_passes_only_capability_headers() -> None:
     """NVIDIA's preset must reach ChatOpenAI without secret duplication."""
-    import src.providers.llm as llm_mod
 
     captured: dict = {}
 
@@ -240,7 +234,6 @@ def test_deepseek_native_adapter_is_used_when_available(monkeypatch) -> None:
     import sys
     from types import SimpleNamespace
 
-    import src.providers.llm as llm_mod
 
     _provider_configuration._dotenv_loaded = True
     captured: dict = {}

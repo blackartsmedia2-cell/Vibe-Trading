@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.settings_routes import _settings_store
-from src.providers.connections import _perform_completion_test, _validate_custom_base_url, activate_custom_provider
+from src.providers.custom_profiles import _perform_completion_test, _validate_custom_base_url, activate_custom_provider
 from src.providers.custom_profiles import CustomProviderStore, STORE_LOCK
 
 AuthDep = Callable[..., Awaitable[Any] | Any]

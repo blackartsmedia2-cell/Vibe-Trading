@@ -15,7 +15,7 @@ transport; the live endpoint is the reporter's to confirm.
 """
 
 from __future__ import annotations
-from src.providers import adapters as _provider_adapters
+from src.providers import llm as _provider_adapters
 
 import json
 from typing import Any, Iterator
@@ -23,7 +23,6 @@ from typing import Any, Iterator
 import httpx
 import pytest
 
-import src.providers.llm as llm_mod
 from src.providers.llm import ChatOpenAIWithReasoning, _is_responses_required_error
 
 pytestmark = pytest.mark.skipif(

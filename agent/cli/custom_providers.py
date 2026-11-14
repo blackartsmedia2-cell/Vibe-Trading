@@ -26,7 +26,7 @@ def run(args) -> int:
         if args.custom_command == "list":
             result = store.list_public()
         elif args.custom_command == "add":
-            from src.providers.connections import _perform_completion_test, _validate_custom_base_url
+            from src.providers.custom_profiles import _perform_completion_test, _validate_custom_base_url
 
             base_url = _validate_custom_base_url(args.base_url)
             key = getpass.getpass("API key (hidden): ")
@@ -34,7 +34,7 @@ def run(args) -> int:
             result = store.save(profile_id=args.id, label=args.label, base_url=base_url, model=args.model, api_key=key)
         else:
             # Canonical settings writes use the same host paths as the API.
-            from src.providers.connections import activate_custom_provider
+            from src.providers.custom_profiles import activate_custom_provider
 
             result = activate_custom_provider(args.id, store=store)
         print(json.dumps(result, ensure_ascii=False, indent=2))

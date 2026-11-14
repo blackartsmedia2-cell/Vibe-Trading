@@ -3526,7 +3526,7 @@ def cmd_live_authorize(broker: str) -> int:
 
 def cmd_provider_doctor() -> int:
     """Print redacted provider diagnostics."""
-    from src.providers.diagnostics import provider_diagnostics
+    from src.providers.llm import provider_diagnostics
 
     console.print_json(data=provider_diagnostics())
     return EXIT_SUCCESS

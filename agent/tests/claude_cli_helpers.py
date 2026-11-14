@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 import pytest
 
-from src.providers import claude_cli_models
+from src.providers import claude_cli
 
 # Answers one ``claude -p`` turn from a reply list, one reply per call.
 _FAKE_CLI = textwrap.dedent("""\
@@ -126,7 +126,7 @@ def install_fake_init_cli(
         logged invocation.
     """
     reply_path, calls = _install(_FAKE_INIT_CLI, "init-*.json", tmp_path, monkeypatch)
-    monkeypatch.setattr(claude_cli_models, "_model_cache", {})
+    monkeypatch.setattr(claude_cli, "_model_cache", {})
 
     def set_reply(reply: dict[str, Any]) -> None:
         reply_path.write_text(json.dumps(reply))

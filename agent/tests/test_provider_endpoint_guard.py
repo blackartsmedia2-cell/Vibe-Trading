@@ -136,7 +136,7 @@ def test_a_fake_ip_proxy_answer_is_allowed_but_a_written_fake_ip_is_not(monkeypa
     every custom provider was refused on such a host at save time)."""
     import ipaddress
 
-    from src.providers import connections as custom_provider_routes
+    from src.providers import custom_profiles as custom_provider_routes
 
     fake = ipaddress.ip_address("198.18.0.4")
     assert endpoint_guard.is_non_public_address(fake)

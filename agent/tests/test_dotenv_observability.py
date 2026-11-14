@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-import src.providers.llm as llm
+from src.providers import settings as provider_settings
 from src.config.accessor import get_env_config, reset_env_config
 
 LOGGER = "src.providers.settings"
@@ -37,7 +37,7 @@ def test_logs_redacted_label_not_path(tmp_path, fresh, monkeypatch, caplog):
     monkeypatch.setattr(_provider_configuration, "_ENV_CANDIDATES", [env])
     monkeypatch.setattr(_provider_configuration, "_ENV_LABELS", ("<TEST_SLOT>",))
     with caplog.at_level(logging.INFO, logger=LOGGER):
-        llm._ensure_dotenv()
+        provider_settings._ensure_dotenv()
     msg = "\n".join(r.getMessage() for r in caplog.records)
     assert "dotenv resolved from" in msg
     assert "<TEST_SLOT>" in msg  # redacted slot label is logged
@@ -69,7 +69,7 @@ def test_redact_env_source_maps_real_candidates():
 def test_logs_none_when_no_env_found(tmp_path, fresh, monkeypatch, caplog):
     monkeypatch.setattr(_provider_configuration, "_ENV_CANDIDATES", [tmp_path / "does-not-exist.env"])
     with caplog.at_level(logging.INFO, logger=LOGGER):
-        llm._ensure_dotenv()
+        provider_settings._ensure_dotenv()
     msg = "\n".join(r.getMessage() for r in caplog.records)
     assert "none (no .env file found)" in msg
 
@@ -91,7 +91,7 @@ def test_loaded_dotenv_refreshes_cached_env_config(tmp_path, fresh, monkeypatch)
     cached_before_load = get_env_config()
     assert cached_before_load.llm.langchain_provider == "openai"
 
-    llm._ensure_dotenv()
+    provider_settings._ensure_dotenv()
 
     refreshed = get_env_config()
     assert refreshed is not cached_before_load
@@ -103,7 +103,7 @@ def test_logs_redacted_base_url_without_credentials(tmp_path, fresh, monkeypatch
     monkeypatch.setattr(_provider_configuration, "_ENV_CANDIDATES", [tmp_path / "does-not-exist.env"])
     monkeypatch.setenv("OPENAI_BASE_URL", "https://sk-secret@example.com:8443/v1?api_key=sk-hidden")
     with caplog.at_level(logging.INFO, logger=LOGGER):
-        llm._ensure_dotenv()
+        provider_settings._ensure_dotenv()
     msg = "\n".join(r.getMessage() for r in caplog.records)
     assert "dotenv resolved from" in msg
     assert "sk-secret" not in msg
@@ -114,7 +114,7 @@ def test_logs_redacted_base_url_without_credentials(tmp_path, fresh, monkeypatch
 def test_latch_still_skips_second_call(tmp_path, fresh, monkeypatch, caplog):
     """Behavior preserved: still loads once per process (no log on re-entry)."""
     monkeypatch.setattr(_provider_configuration, "_ENV_CANDIDATES", [tmp_path / "nope.env"])
-    llm._ensure_dotenv()
+    provider_settings._ensure_dotenv()
     with caplog.at_level(logging.INFO, logger=LOGGER):
-        llm._ensure_dotenv()  # latched -> early return, no new log
+        provider_settings._ensure_dotenv()  # latched -> early return, no new log
     assert not [r for r in caplog.records if "dotenv resolved" in r.getMessage()]

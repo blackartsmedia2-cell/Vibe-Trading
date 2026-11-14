@@ -1,6 +1,6 @@
 """Paid responses remain accounted for when compaction or Stop interrupts work."""
 
-from src.providers import adapters as _provider_adapters
+from src.providers import llm as _provider_adapters
 from src.providers.settings import resolve_config
 
 from types import SimpleNamespace
@@ -210,7 +210,6 @@ def test_native_deepseek_forwards_configured_output_limit(monkeypatch, limit):
 def test_native_deepseek_output_limit_reaches_http_request(monkeypatch):
     """Exercise the optional real adapter and SDK without contacting a provider."""
     import httpx
-    from src.providers import llm as provider
 
     native = pytest.importorskip("langchain_deepseek")
     requests = []

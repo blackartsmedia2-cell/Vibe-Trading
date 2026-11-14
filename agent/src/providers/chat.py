@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from src.providers.content_filter import is_content_filter_triggered
-from src.providers.adapters import build_llm
+from src.providers.llm import build_llm
 from src.providers.settings import ProviderConfig, resolve_config
 from src.providers.stream_guard import StreamInterrupted, supervised_pulls
 from src.providers.tool_policy import offered_tools

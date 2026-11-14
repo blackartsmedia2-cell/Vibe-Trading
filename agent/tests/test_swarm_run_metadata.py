@@ -11,7 +11,7 @@ re-read by ``SwarmStore.list_runs`` after this change.
 from __future__ import annotations
 
 from src.providers.registry import provider_names
-from src.providers import adapters as _provider_adapters
+from src.providers import llm as _provider_adapters
 from src.providers import settings as _provider_configuration
 
 import pytest

@@ -1,7 +1,7 @@
 """Tests for the custom OpenAI-compatible provider manager."""
 
 from __future__ import annotations
-from src.providers import connections
+from src.providers import custom_profiles
 
 import json
 from pathlib import Path
@@ -71,12 +71,12 @@ def test_custom_provider_dns_target_rejects_non_public_resolution(
     monkeypatch: pytest.MonkeyPatch, resolved: str
 ) -> None:
     monkeypatch.setattr(
-        connections.socket,
+        custom_profiles.socket,
         "getaddrinfo",
         lambda *_args, **_kwargs: [(None, None, None, "", (resolved, 0))],
     )
     with pytest.raises(ValueError, match="resolves to a local or private network address"):
-        connections._reject_private_dns_targets("https://provider.example/v1")
+        custom_profiles._reject_private_dns_targets("https://provider.example/v1")
 
 
 def test_store_never_serializes_api_key(tmp_path: Path) -> None:
@@ -181,7 +181,7 @@ def test_activation_requires_explicit_confirmation(
 def test_activate_constructs_a_model_with_one_vault_profile(
     client, custom_store, tmp_path, monkeypatch
 ):
-    from src.providers import custom_profiles, llm
+    from src.providers import llm, settings as provider_settings
     from src.providers.settings import get_llm_credentials
 
     custom_store.save(profile_id="alpha", label="Alpha", base_url="https://alpha.example/v1", model="alpha-model", api_key="alpha-secret")
@@ -193,7 +193,7 @@ def test_activate_constructs_a_model_with_one_vault_profile(
     # Track process values so pytest restores them after the route updates them.
     monkeypatch.setenv("LANGCHAIN_PROVIDER", "openai")
     monkeypatch.setenv("LANGCHAIN_MODEL_NAME", "other-model")
-    monkeypatch.setattr(llm, "_ensure_dotenv", lambda: None)
+    monkeypatch.setattr(provider_settings, "_ensure_dotenv", lambda: None)
     response = client.post("/settings/custom-providers/alpha/activate", json={"confirm": True})
     assert response.status_code == 200
     assert "secret" not in response.text
@@ -257,7 +257,7 @@ def test_failed_activation_keeps_previous_profile(custom_store, tmp_path, monkey
         raise OSError("Unable to save settings")
     monkeypatch.setattr(SettingsStore, "persist", fail_write)
     with pytest.raises(OSError):
-        connections.activate_custom_provider("second", store=custom_store)
+        custom_profiles.activate_custom_provider("second", store=custom_store)
     assert custom_store._read()["active_id"] == "first"
 
 
@@ -270,9 +270,9 @@ def test_real_completion_transport_redacts_key_and_sends_expected_request(monkey
     def handle(request):
         seen.append(request)
         return httpx.Response(200, json={"choices": [{"message": {"content": "OK synthetic-secret"}}]})
-    monkeypatch.setattr(connections, "_reject_private_dns_targets", lambda _: None)
-    monkeypatch.setattr(connections, "proxy_applies", lambda _: False)
-    monkeypatch.setattr(connections, "public_only_async_client", lambda **kw: actual_client(transport=httpx.MockTransport(handle), **kw))
+    monkeypatch.setattr(custom_profiles, "_reject_private_dns_targets", lambda _: None)
+    monkeypatch.setattr(custom_profiles, "proxy_applies", lambda _: False)
+    monkeypatch.setattr(custom_profiles, "public_only_async_client", lambda **kw: actual_client(transport=httpx.MockTransport(handle), **kw))
     result = asyncio.run(custom_provider_routes._perform_completion_test(base_url="https://example.test/v1", model="demo", api_key="synthetic-secret"))
     assert result["response_preview"] == "OK [redacted]"
     assert str(seen[0].url) == "https://example.test/v1/chat/completions"
