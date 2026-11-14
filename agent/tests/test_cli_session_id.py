@@ -171,3 +171,21 @@ def test_cmd_session_chat_passes_the_session_it_was_given(
     _legacy.cmd_session_chat(session.session_id, 5)
 
     assert seen == [session.session_id]
+
+
+@pytest.mark.parametrize("instruction,allowed", [("不查询行情", False), ("现在允许查询行情", True)])
+def test_interrupted_turn_keeps_latest_quote_permission(monkeypatch, instruction, allowed):
+    import importlib
+    from src.agent.grounding.ledger import market_data_directive
+
+    main = importlib.import_module("cli.main")
+    ctx = main.InteractiveContext(session_id="interrupted", history=[{"role": "user", "content": "不查询行情"}])
+    monkeypatch.setattr(main, "_append_message", lambda *args: None)
+
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_legacy, "_run_agent", interrupt)
+    main._run_one_turn(instruction, ctx)
+    assert ctx.history[-1]["content"] == instruction
+    assert market_data_directive(ctx.history)[1] is allowed

@@ -2058,6 +2058,7 @@ def _handle_swarm_command(arg: str) -> None:
 
 def cmd_interactive(max_iter: int) -> None:
     """Interactive mode with welcome screen, slash commands, and agent conversation."""
+    from src.agent.grounding.ledger import retain_market_data_directive
     _print_welcome()
 
     from src.preflight import run_preflight
@@ -2103,7 +2104,7 @@ def cmd_interactive(max_iter: int) -> None:
                 dashboard.live = live
                 result = _run_agent(
                     user_input,
-                    history=history[-6:],
+                    history=retain_market_data_directive(history, history[-6:]),
                     max_iter=max_iter,
                     dashboard=dashboard,
                     session_id=session_id,
@@ -2112,10 +2113,11 @@ def cmd_interactive(max_iter: int) -> None:
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrupted[/yellow]")
             continue
+        finally:
+            history.append({"role": "user", "content": user_input})
         stats.last_elapsed = time.perf_counter() - start
         stats.tool_count += dashboard.iterations
         _print_result(result, stats.last_elapsed)
-        history.append({"role": "user", "content": user_input})
         if result.get("content"):
             history.append({"role": "assistant", "content": result["content"]})
 
@@ -2925,6 +2927,7 @@ def cmd_sessions() -> None:
 
 def cmd_session_chat(session_id: str, max_iter: int) -> None:
     """Continue a session chat."""
+    from src.agent.grounding.ledger import retain_market_data_directive
     from src.session.store import SessionStore
 
     store = SessionStore(base_dir=SESSIONS_DIR)
@@ -2934,7 +2937,7 @@ def cmd_session_chat(session_id: str, max_iter: int) -> None:
         console.print(f"[red]Session {session_id} not found[/red]")
         return
 
-    messages = store.get_messages(session_id)
+    messages = store.get_messages(session_id, limit=None)
     history: List[Dict[str, str]] = []
     for msg in messages:
         if msg.role in ("user", "assistant") and msg.content.strip():
@@ -2978,18 +2981,18 @@ def cmd_session_chat(session_id: str, max_iter: int) -> None:
             _timer.start()
             try:
                 result = _run_agent(
-                    prompt, history=history[-6:], max_iter=max_iter, session_id=session_id
+                    prompt, history=retain_market_data_directive(history, history[-6:]), max_iter=max_iter, session_id=session_id
                 )
             except KeyboardInterrupt:
                 console.print("\n[yellow]Interrupted[/yellow]")
                 continue
             finally:
+                history.append({"role": "user", "content": prompt})
                 _stop_timer.set()
                 _timer.join(timeout=1)
 
         stats.last_elapsed = time.perf_counter() - run_start
         _print_result(result, stats.last_elapsed)
-        history.append({"role": "user", "content": prompt})
         if result.get("content"):
             history.append({"role": "assistant", "content": result["content"]})
 

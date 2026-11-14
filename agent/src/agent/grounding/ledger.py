@@ -88,13 +88,47 @@ _VALUATION_CONCEPT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_NO_MARKET_DATA_RE = re.compile(
-    r"(?:不要|不允许|禁止|不得|无需|不)(?:再|主动|自动)?(?:查询|查|获取|拉取|抓取|补取)"
-    r"(?:实时|最新|任何)?(?:行情|股价|价格)"
-    r"|\b(?:do not|don't|must not|never)\s+(?:query|fetch|retrieve|look up)\s+"
-    r"(?:any\s+|live\s+|real-time\s+)?(?:market data|quotes?|stock prices?)\b",
+_MARKET_DATA_DIRECTIVE_RE = re.compile(
+    r"(?:(?P<deny>不要|不允许|不可以|禁止|不得|无需|不)"
+    r"|(?:^|(?<=[，,。；;！!\n]))\s*(?:现在|这轮|接下来)?(?:允许|可以|请|恢复))"
+    r"(?:再|主动|自动)?(?:查询|查|获取|拉取|抓取|补取)"
+    r"(?:实时|最新|任何)?(?:行情|股价|价格)(?!\s*[吗么?？])"
+    r"|(?:(?P<deny_en>\b(?:do not|don't|must not|never))"
+    r"|(?:^|(?<=[，,。.!；;\n]))\s*(?:now\s+)?(?:you may|you can|please|I allow you to))\s+"
+    r"(?:query|fetch|retrieve|look up)\s+"
+    r"(?:any\s+|live\s+|real-time\s+)?(?:market data|quotes?|stock prices?)\b(?!\s*[?？])",
     re.IGNORECASE,
 )
+
+
+def market_data_directive(history: Sequence[Mapping[str, Any]]) -> tuple[str, bool] | None:
+    """Return the latest explicit user quote instruction and whether it allows fetching.
+
+    Assistant/tool text cannot change permission. Neutral continuation keeps the
+    last instruction; within one message the last explicit instruction wins.
+    """
+    for message in reversed(history):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        matches = list(_MARKET_DATA_DIRECTIVE_RE.finditer(content))
+        if matches:
+            match = matches[-1]
+            return match.group().strip(), not (match["deny"] or match["deny_en"])
+    return None
+
+
+def retain_market_data_directive(
+    history: Sequence[Mapping[str, Any]], recent: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep the latest user quote instruction when trimming model history."""
+    directive = market_data_directive(history)
+    if directive and directive != market_data_directive(recent):
+        recent = [*recent, {"role": "user", "content": directive[0]}]
+    return recent
+
 
 _ACTIONABLE_MARKET_RE = re.compile(
     r"(?:\bbuy\b|\bsell\b|\bentry\b|\btarget price\b|\bcurrent price\b|"
@@ -129,7 +163,8 @@ class GroundingLedger(
             run_dir: Active run directory.
             user_message: Current user request.
             history: Optional prior message history. It remains available to
-                the model. Only explicit constraints whose clause names the
+                the model. Explicit quote permissions persist until superseded.
+                Only identity constraints whose clause names the
                 current resolver subject may carry forward; stale global
                 instructions cannot authorize a new subject.
             contextual_identity_constraints: Whether explicit market words in
@@ -137,7 +172,8 @@ class GroundingLedger(
         """
         self.run_dir = Path(run_dir)
         self.user_message = user_message
-        self.market_data_allowed = not bool(_NO_MARKET_DATA_RE.search(user_message))
+        directive = market_data_directive([*(history or []), {"role": "user", "content": user_message}])
+        self.market_data_allowed = directive[1] if directive else True
         self.resolution_context = ResolutionContext.from_messages(
             user_message,
             history,

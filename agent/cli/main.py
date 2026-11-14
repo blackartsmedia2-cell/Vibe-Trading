@@ -385,13 +385,9 @@ def _session_store() -> Any:
 
 
 def _build_session_history(store: Any, session_id: str) -> list[dict]:
-    """Load and filter recent message history for a session.
-
-    Returns up to ``_HISTORY_RETAINED_TURNS`` user/assistant messages
-    with non-empty content.
-    """
+    """Load user/assistant history; trim only after retaining user constraints."""
     try:
-        messages = store.get_messages(session_id, limit=_HISTORY_RETAINED_TURNS * 2)
+        messages = store.get_messages(session_id, limit=None)
     except Exception:  # noqa: BLE001 — persistence error → empty history
         return []
     history = [
@@ -399,7 +395,7 @@ def _build_session_history(store: Any, session_id: str) -> list[dict]:
         for m in messages
         if m.role in {"user", "assistant"} and m.content.strip()
     ]
-    return history[-_HISTORY_RETAINED_TURNS:]
+    return history
 
 
 def _new_session(prompt_preview: str) -> Optional[str]:
@@ -737,9 +733,12 @@ def _run_one_turn(user_input: str, ctx: InteractiveContext) -> None:
             transient=False,
         ) as live:
             dashboard.live = live
+            from src.agent.grounding.ledger import retain_market_data_directive
+
+            history = retain_market_data_directive(ctx.history, ctx.history[-_HISTORY_RETAINED_TURNS:])
             result = _run_agent(
                 user_input,
-                history=ctx.history[-_HISTORY_RETAINED_TURNS:],
+                history=history,
                 max_iter=ctx.max_iter,
                 dashboard=dashboard,
                 session_id=ctx.session_id or "",
@@ -756,6 +755,8 @@ def _run_one_turn(user_input: str, ctx: InteractiveContext) -> None:
         except (BrokenPipeError, OSError):
             pass
         return
+    finally:
+        ctx.history.append({"role": "user", "content": user_input})
 
     elapsed = time.perf_counter() - start
     _print_interactive_result(console, result, elapsed)
@@ -771,7 +772,6 @@ def _run_one_turn(user_input: str, ctx: InteractiveContext) -> None:
             ctx.pending_proposal = dict(captured_proposal)
             _render_mandate_proposal(console, ctx.pending_proposal)
 
-    ctx.history.append({"role": "user", "content": user_input})
     answer = (result.get("content") or "").strip()
     if answer:
         ctx.history.append({"role": "assistant", "content": answer})

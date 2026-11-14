@@ -453,3 +453,34 @@ def test_attempt_records_and_round_trips_its_wall_clock_start():
     legacy = attempt.to_dict()
     del legacy["started_at"]
     assert Attempt.from_dict(legacy).started_at is None
+
+
+@pytest.mark.parametrize("instruction,allowed", [("不查询行情", False), ("现在允许查询行情", True)])
+def test_quote_permission_survives_persisted_history_limits(tmp_path, monkeypatch, instruction, allowed):
+    from cli.main import _build_session_history
+    from src.agent.grounding import GroundingLedger
+    from src.agent.grounding.ledger import retain_market_data_directive
+    from src.session.models import Message
+
+    async def scenario():
+        service = _service(tmp_path, monkeypatch)
+        session = service.create_session(title="quote permission")
+        for text in ("不查询行情", instruction):
+            service.store.append_message(Message(session_id=session.session_id, role="user", content=text))
+        for _ in range(101):
+            service.store.append_message(Message(session_id=session.session_id, role="assistant", content="x" * 130))
+
+        async def check(attempt, messages, **kwargs):
+            api_history = service._convert_messages_to_history(messages)
+            cli_history = _build_session_history(service.store, session.session_id)
+            for history in (api_history, retain_market_data_directive(cli_history, cli_history[-6:])):
+                ledger = GroundingLedger(run_dir=tmp_path, user_message="重试", history=history)
+                assert ledger.market_data_allowed is allowed
+            return {"status": "success", "content": "ok"}
+
+        monkeypatch.setattr(service, "_run_with_agent", check)
+        await service.send_message(session.session_id, "重试")
+        await service._active_tasks[session.session_id]
+        assert service.store.get_messages(session.session_id)[-1].content == "ok"
+
+    asyncio.run(scenario())

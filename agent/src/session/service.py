@@ -467,7 +467,7 @@ class SessionService:
                 "attempt.started",
                 {"attempt_id": attempt.attempt_id, "started_at": wall_started_at},
             )
-            messages = self.store.get_messages(session.session_id)
+            messages = self.store.get_messages(session.session_id, limit=None)
             result = await self._run_with_agent(
                 attempt,
                 messages=messages,
@@ -814,7 +814,7 @@ class SessionService:
         iterative updates.
 
         Args:
-            messages: Session message list without the current turn.
+            messages: Session message list including the current turn (excluded here).
 
         Returns:
             OpenAI-format messages trimmed from the newest items within the token budget.
@@ -866,7 +866,9 @@ class SessionService:
             if not trimmed:
                 trimmed.append({**msg, "content": content[:remaining] + "\n[... truncated]"})
             break
-        return list(reversed(trimmed))
+        from src.agent.grounding.ledger import retain_market_data_directive
+
+        return retain_market_data_directive(history, list(reversed(trimmed)))
 
     @staticmethod
     def _load_metrics(run_dir: Path) -> Optional[Dict[str, Any]]:
