@@ -84,17 +84,19 @@ verified -> backend-stopped -> installer-launched
 
 - `verified`: the staged candidate passed the complete verification policy.
 - `backend-stopped`: `stopForUpdate()` confirmed no owned PID or listener.
-- `installer-launched`: Windows acknowledged the installer process launch.
+- `installer-launched`: handoff intent is durable before spawning the installer.
+  It may be running even if the previous process never recorded an acknowledgement.
 
-On the next application start, the journal is reconciled against the running
-application version, after the backend has started:
+On the next application start, the journal is checked before starting Python.
+An uncertain installer handoff blocks an old backend from starting under file
+replacement. Completion is recorded only after the target backend is healthy:
 
 | Installed version | Last phase | Recovery result |
 | --- | --- | --- |
 | Target version | Any | Mark complete; remove journal and staged candidate |
 | Original version | `verified` | Discard staged candidate; no shutdown occurred |
 | Original version | `backend-stopped` | Treat as interrupted before installer; discard and require fresh verification |
-| Original version | `installer-launched` | Treat as failed/interrupted installer; discard and require fresh verification |
+| Original version | `installer-launched` | Preserve journal/artifact; finish or close the installer and repair the installation before clearing the journal |
 | Any third version | Any | Leave journal and artifact untouched; require manual intervention |
 | Malformed journal | Unknown | Leave it untouched; require manual intervention |
 
@@ -105,8 +107,9 @@ it with an atomic hard-link create-if-absent operation. Concurrent begins can
 therefore never overwrite one another. Later phase writes retain the
 same-directory rename path.
 
-This recovery path restores the application to a clean retry state when the
-old or new version can launch. It does **not** claim rollback of a partially
+Verified and pre-installer attempts can return to a clean retry state. An
+installer handoff on the old version requires manual resolution because the
+absence of a version change does not prove that the installer has exited. It does **not** claim rollback of a partially
 modified installation. That remains part of the real signed NSIS interruption
 test required by #1016.
 
@@ -189,3 +192,26 @@ Finish active work first; existing session checkpoints handle interrupted replie
   source-install guidance. These are live local checks, **not a Windows installer
   upgrade**. Signed Windows replacement, UAC, relaunch and interrupted NSIS still
   require the actual publisher artifacts and a Windows environment.
+
+## Focused review after Desktop isolation (2026-11-14)
+
+The Mac DMG/icon/startup experiment remains on `codex/macos-desktop-experiment`;
+this branch keeps the existing Windows update transport and Web version checks.
+Unreadable credential ciphertext now fails before dotenv migration, preserving
+both copies for recovery. No plaintext fallback or new credential format was
+introduced. The installation/data path guard also resolves existing symlink or
+junction parents when a data subdirectory does not exist yet.
+
+The real old-to-new credential/configuration/session fixture is reused for
+validation. Signed Windows installer replacement remains unverified on this Mac;
+the release feed and publisher pins remain unconfigured. Local checks do not
+claim an enabled public automatic-update channel.
+
+Verified in this review: 177 Python checks passed (7 optional cases skipped),
+the 2 Web update-card cases passed, and TypeScript/update-safety checks passed.
+Real Electron read the old credential fixture without changing ciphertext or
+configuration bytes; a live current API retained saved messages, reasoning,
+tool trails and interrupted-attempt recovery. A hidden native Electron run
+through the actual main/preload entry showed the pending-installer error,
+retained the journal/artifact and did not start a backend. No new Mac UI or
+packaging feature was brought back for these checks.

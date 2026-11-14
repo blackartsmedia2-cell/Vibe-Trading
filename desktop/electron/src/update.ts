@@ -15,7 +15,12 @@ export type DesktopUpdatePolicy = {
 export type DesktopRelease = { version: string; url: string; sha256: string };
 
 export function assertDataOutsideInstallation(installationDirectory: string, dataDirectories: string[]): void {
-  const canonical = (directory: string) => existsSync(directory) ? realpathSync(directory) : path.resolve(directory);
+  const canonical = (directory: string): string => {
+    const absolute = path.resolve(directory);
+    if (existsSync(absolute)) return realpathSync(absolute);
+    const parent = path.dirname(absolute);
+    return parent === absolute ? absolute : path.join(canonical(parent), path.basename(absolute));
+  };
   for (const directory of dataDirectories) {
     if (!path.isAbsolute(directory)) throw new Error("Use an absolute data directory before updating");
     const relative = path.relative(canonical(installationDirectory), canonical(directory));

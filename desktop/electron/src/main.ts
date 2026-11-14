@@ -199,6 +199,17 @@ async function bootInternal(): Promise<void> {
   await backend?.stop();
   if (!mainWindow.webContents.getURL().startsWith("file:")) await showLoadingPage();
 
+  // Do not start an old backend while a previously launched installer may
+  // still be replacing its files. Completion requires a healthy new backend.
+  const recovery = await updateJournal.recover(app.getVersion(), false).catch((error) => ({
+    disposition: "manual-intervention-required" as const, detail: errorText(error),
+  }));
+  updateRecovery = recovery.disposition === "none" ? undefined : recovery;
+  if (recovery.disposition === "manual-intervention-required") {
+    await reportBootError(recovery.detail ?? "Resolve the pending update before restarting");
+    return;
+  }
+
   backend = new BackendManager({
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
@@ -325,6 +336,8 @@ async function installUpdate(): Promise<void> {
     await backend.stopForUpdate();
     await updateJournal.advance(attempt.attemptId, "backend-stopped");
     await assertVerifiedUpdateArtifactUnchanged(artifactPath, staged.sha256);
+    // Persist handoff intent first: a crash after spawn must not look safe to retry.
+    await updateJournal.advance(attempt.attemptId, "installer-launched");
     await new Promise<void>((resolve, reject) => {
       const child = spawn(artifactPath!, ["--updated", "/S", "--force-run"], {
         detached: true, stdio: "ignore", windowsHide: true,
@@ -332,7 +345,6 @@ async function installUpdate(): Promise<void> {
       child.once("error", reject);
       child.once("spawn", () => { launched = true; child.unref(); resolve(); });
     });
-    await updateJournal.advance(attempt.attemptId, "installer-launched");
   } catch (error) {
     appendFileSync(path.join(app.getPath("logs"), "updates.log"), `${new Date().toISOString()} ${errorText(error)}\n`);
     throw error;

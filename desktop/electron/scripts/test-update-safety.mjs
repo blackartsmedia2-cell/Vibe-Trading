@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,11 @@ assertDataOutsideInstallation(path.join(testRoot, "program"), [path.join(testRoo
 for (const directory of [path.join(testRoot, "program"), path.join(testRoot, "program", "sessions"), "relative-data"]) {
   assert.throws(() => assertDataOutsideInstallation(path.join(testRoot, "program"), [directory]));
 }
+await mkdir(path.join(testRoot, "program"));
+await symlink(path.join(testRoot, "program"), path.join(testRoot, "profile-link"), "junction");
+assert.throws(() => assertDataOutsideInstallation(path.join(testRoot, "program"), [
+  path.join(testRoot, "profile-link", "not-created-yet", "sessions"),
+]));
 const artifactPath = path.join(testRoot, "candidate.exe");
 await writeFile(artifactPath, fixture);
 
@@ -162,7 +167,7 @@ if (process.platform === "win32") {
 for (const scenario of [
   { phase: "verified", disposition: "discarded-before-shutdown" },
   { phase: "backend-stopped", disposition: "interrupted-before-installer" },
-  { phase: "installer-launched", disposition: "installer-failed-or-interrupted" },
+  { phase: "installer-launched", disposition: "manual-intervention-required" },
 ]) {
   const directory = await mkdtemp(path.join(testRoot, "recovery-"));
   const journal = new UpdateRecoveryJournal(directory);
@@ -175,16 +180,18 @@ for (const scenario of [
   if (scenario.phase === "installer-launched") {
     attempt = await journal.advance(attempt.attemptId, "installer-launched");
   }
-  const recovery = await journal.recover("0.3.0");
+  const recovery = await journal.recover("0.3.0", false);
   assert.equal(recovery.disposition, scenario.disposition);
-  assert.equal(await exists(stagedArtifact), false);
-  assert.equal(await exists(journal.journalPath), false);
+  assert.equal(await exists(stagedArtifact), scenario.phase === "installer-launched");
+  assert.equal(await exists(journal.journalPath), scenario.phase === "installer-launched");
 }
 
 const completedDirectory = await mkdtemp(path.join(testRoot, "completed-"));
 const completedJournal = new UpdateRecoveryJournal(completedDirectory);
 await writeFile(path.join(completedDirectory, "update.exe"), fixture);
 await completedJournal.begin(newAttempt("update.exe"));
+assert.equal((await completedJournal.recover("0.3.1", false)).disposition, "none");
+assert.equal(await exists(completedJournal.journalPath), true);
 assert.equal((await completedJournal.recover("0.3.1")).disposition, "completed");
 
 const mismatchDirectory = await mkdtemp(path.join(testRoot, "mismatch-"));

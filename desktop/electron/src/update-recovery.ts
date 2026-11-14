@@ -23,7 +23,6 @@ export type UpdateRecoveryDisposition =
   | "completed"
   | "discarded-before-shutdown"
   | "interrupted-before-installer"
-  | "installer-failed-or-interrupted"
   | "manual-intervention-required";
 
 export type UpdateRecoveryResult = {
@@ -82,7 +81,7 @@ export class UpdateRecoveryJournal {
     return updated;
   }
 
-  async recover(currentVersion: string): Promise<UpdateRecoveryResult> {
+  async recover(currentVersion: string, backendReady = true): Promise<UpdateRecoveryResult> {
     let attempt: UpdateAttempt;
     try {
       const raw = await readFile(this.journalPath, "utf8");
@@ -103,6 +102,7 @@ export class UpdateRecoveryJournal {
     }
 
     if (currentVersion === attempt.toVersion) {
+      if (!backendReady) return { disposition: "none", attempt };
       await this.clearSafeAttempt(attempt);
       return { disposition: "completed", attempt };
     }
@@ -114,11 +114,16 @@ export class UpdateRecoveryJournal {
       };
     }
 
+    if (attempt.phase === "installer-launched") {
+      return {
+        disposition: "manual-intervention-required", attempt,
+        detail: "The installer was launched but this is still the old version. Finish or close the installer and repair the installation before clearing the pending update journal.",
+      };
+    }
+
     const disposition: UpdateRecoveryDisposition = attempt.phase === "verified"
       ? "discarded-before-shutdown"
-      : attempt.phase === "backend-stopped"
-        ? "interrupted-before-installer"
-        : "installer-failed-or-interrupted";
+      : "interrupted-before-installer";
     await this.clearSafeAttempt(attempt);
     return { disposition, attempt };
   }

@@ -67,6 +67,18 @@ async function run() {
     assert.deepEqual(reloadedStore.status().migrated, []);
     assert.ok(!(await fs.readFile(path.join(configDirectory, ".env"), "utf8")).includes("stale-secret"));
 
+    const credentialPath = path.join(userDataDirectory, "credentials.v1.json");
+    const original = await fs.readFile(credentialPath);
+    const dotenvPath = path.join(configDirectory, ".env");
+    await fs.appendFile(dotenvPath, "OPENAI_API_KEY=migration-backup\n");
+    const before = await fs.readFile(dotenvPath);
+    const corrupt = JSON.stringify({ version: 1, values: { OPENAI_API_KEY: "corrupt" } });
+    await fs.writeFile(credentialPath, corrupt);
+    await assert.rejects(new SecureCredentialStore({ homeDirectory, userDataDirectory }).initialize());
+    assert.deepEqual(await fs.readFile(dotenvPath), before);
+    assert.equal(await fs.readFile(credentialPath, "utf8"), corrupt);
+    await fs.writeFile(credentialPath, original);
+
     for (const name of names) {
       await store.set(name, "desktop-smoke-replacement");
       assert.equal(store.environment()[name], "desktop-smoke-replacement");

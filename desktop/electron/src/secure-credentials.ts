@@ -72,6 +72,8 @@ export class SecureCredentialStore {
       throw new Error(this.messages.credentialEncryptionUnavailable);
     }
     await this.load();
+    // Verify existing ciphertext before removing any plaintext migration source.
+    this.environment();
     await this.migrateDotenv(path.join(this.homeDirectory, ".vibe-trading", ".env"));
   }
 
@@ -104,11 +106,7 @@ export class SecureCredentialStore {
   }
 
   private decrypt(name: string): string {
-    try {
-      return safeStorage.decryptString(Buffer.from(this.values[name], "base64"));
-    } catch {
-      return "";
-    }
+    return safeStorage.decryptString(Buffer.from(this.values[name], "base64"));
   }
 
   private assertAllowed(name: string): void {
