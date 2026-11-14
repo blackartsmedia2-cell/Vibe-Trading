@@ -9,7 +9,8 @@ from pathlib import Path
 
 import cli
 from cli.onboard import PROVIDERS as ONBOARD_PROVIDERS
-from src.providers.capabilities import get_llm_credentials, get_provider_capabilities
+from src.providers.settings import get_llm_credentials
+from src.providers.registry import get_provider_capabilities
 from src.providers.registry import provider_catalog
 
 

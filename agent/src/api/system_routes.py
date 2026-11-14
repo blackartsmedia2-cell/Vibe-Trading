@@ -155,8 +155,8 @@ def _provider_readiness() -> Tuple[bool, str]:
     """
     try:
         from src.config.accessor import get_env_config
-        from src.providers.capabilities import provider_env_names
-        from src.providers.llm import _sync_provider_env
+        from src.providers.registry import provider_env_names
+        from src.providers.settings import _sync_provider_env
     except Exception as exc:  # noqa: BLE001 — degrade to not-ready, never crash the probe
         logger.warning("readiness: provider config import failed: %r", exc)
         return False, "provider configuration unavailable"

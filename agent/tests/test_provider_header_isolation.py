@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.providers import adapters as _provider_adapters
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import asyncio
 import json

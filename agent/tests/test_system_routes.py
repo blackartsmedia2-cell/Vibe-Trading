@@ -87,12 +87,12 @@ def test_ready_returns_503_when_provider_not_ready(
 
 def test_readiness_helper_real_missing_credential(monkeypatch: pytest.MonkeyPatch):
     """The un-mocked helper flags a configured provider with no credential."""
-    import src.providers.llm as llm
+    from src.providers import settings
     from src.config.accessor import reset_env_config
 
     # Neutralize the .env reload inside _sync_provider_env so the test fully
     # controls the environment (otherwise a machine-local OPENAI_API_KEY leaks in).
-    monkeypatch.setattr(llm, "_ensure_dotenv", lambda: None)
+    monkeypatch.setattr(settings, "_ensure_dotenv", lambda: None)
     monkeypatch.setenv("LANGCHAIN_PROVIDER", "openai")
     monkeypatch.setenv("LANGCHAIN_MODEL_NAME", "gpt-4o-mini")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)

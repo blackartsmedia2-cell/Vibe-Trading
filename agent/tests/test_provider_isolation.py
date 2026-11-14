@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from src.providers import adapters
 from src.providers.chat import ChatLLM, ProviderStreamError
-from src.providers.configuration import resolve_config
+from src.providers.settings import resolve_config
 from tests.provider_helpers import provider_server as provider_server
 
 
@@ -125,7 +125,7 @@ def test_learned_rejections_do_not_cross_endpoints_or_protocols():
 @pytest.mark.parametrize("provider,key", [("anthropic", "snapshot-key"), ("deepseek", "snapshot-key"), ("deepseek", "")])
 def test_native_sdk_credentials_and_headers_are_scoped(monkeypatch, provider, key):
     pytest.importorskip(f"langchain_{provider}")
-    from src.providers.gateway import build_llm
+    from src.providers.adapters import build_llm
 
     snapshot = resolve_config(
         environment={

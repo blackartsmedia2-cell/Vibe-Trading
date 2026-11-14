@@ -10,12 +10,12 @@ re-read by ``SwarmStore.list_runs`` after this change.
 
 from __future__ import annotations
 
+from src.providers.registry import provider_names
 from src.providers import adapters as _provider_adapters
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import pytest
 
-import src.providers.llm as llm_mod
 from src.config.accessor import reset_env_config
 from src.swarm.models import SwarmRun, public_model_metadata, public_provider_metadata
 from src.swarm.runtime import SwarmRuntime
@@ -208,6 +208,7 @@ def test_runtime_redacts_unsupported_reasoning_effort_before_persistence(
 )
 def test_provider_metadata_redacts_non_public_values(provider: str) -> None:
     assert public_provider_metadata(provider) == "[redacted]"
+    assert all(public_provider_metadata(name) == name for name in provider_names())
 
 
 @pytest.mark.parametrize(

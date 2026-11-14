@@ -3,13 +3,13 @@
 from __future__ import annotations
 from src.providers import adapters as _provider_adapters
 
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import json
 import os
 from unittest.mock import patch
 
-from src.providers.capabilities import get_provider_capabilities
+from src.providers.registry import get_provider_capabilities
 from src.providers.llm import build_llm, provider_diagnostics
 
 

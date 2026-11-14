@@ -19,7 +19,7 @@ Responses API for endpoints that support it.
 from __future__ import annotations
 
 from src.providers import adapters as _provider_adapters
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import importlib.util
 import json
@@ -277,14 +277,14 @@ class TestUnsupportedProviders:
         A new provider flipping ``top_level_reasoning_effort=True`` has to be
         added to this set deliberately, with live evidence (or, for moonshot,
         its published contract — issue #2020, pending live confirmation; see
-        its entry in capabilities.py), rather than picked up by a broad
+        its entry in llm_providers.json), rather than picked up by a broad
         predicate. If this fails, someone widened the allowlist — confirm a
         real request to that endpoint succeeded before updating it.
         """
-        from src.providers.capabilities import _PROVIDERS
+        from src.providers.registry import provider_catalog, get_provider_capabilities
 
-        allowlisted = {name for name, caps in _PROVIDERS.items() if caps.top_level_reasoning_effort}
-        assert allowlisted == {"openai", "deepseek", "moonshot", "kimi"}
+        allowlisted = {row["name"] for row in provider_catalog() if get_provider_capabilities(row["name"]).top_level_reasoning_effort}
+        assert allowlisted == {"openai", "deepseek", "moonshot"}
 
     def test_explicit_openai_provider_keeps_effort_for_deepseek_model(self) -> None:
         kwargs = _capture_kwargs(
@@ -517,7 +517,7 @@ class TestAnthropicNativeProvider:
 
         Guessing wrong breaks the request outright, while a missing entry only
         leaves the effort setting inert — the same asymmetry that keeps
-        `top_level_reasoning_effort` a positive allowlist in capabilities.py.
+        `top_level_reasoning_effort` a positive allowlist in llm_providers.json.
         """
         kwargs = self._capture(
             self._env(

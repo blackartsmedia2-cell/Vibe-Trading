@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from tests.provider_helpers import chat_with_adapter
 
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import os
 from typing import Any

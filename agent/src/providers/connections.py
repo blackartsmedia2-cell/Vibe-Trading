@@ -10,10 +10,9 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from src.providers.configuration import CONFIG_LOCK
 from src.providers.custom_profiles import STORE_LOCK, CustomProviderStore
 from src.providers.endpoint_guard import is_non_public_address, proxy_applies, public_only_async_client
-from src.providers.settings import SettingsStore
+from src.providers.settings import CONFIG_LOCK, SettingsStore
 
 _PROVIDER_REQUEST_TIMEOUT_S = 60.0
 

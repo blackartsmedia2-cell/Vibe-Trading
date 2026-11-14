@@ -115,7 +115,7 @@ def _resolve_provider_config() -> dict[str, str]:
     reads go through ``os.getenv`` directly.
     """
     from src.config.accessor import get_env_config
-    from src.providers.capabilities import provider_env_names
+    from src.providers.registry import provider_env_names
 
     env = get_env_config()
     provider = env.llm.langchain_provider.strip().lower()

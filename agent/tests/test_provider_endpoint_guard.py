@@ -109,18 +109,18 @@ def test_proxy_applies_follows_the_process_proxy_settings(monkeypatch: pytest.Mo
 
 
 def test_custom_model_uses_guarded_clients_unless_a_proxy_resolves_the_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.providers import llm, configuration
+    from src.providers import llm, settings
 
-    monkeypatch.setattr(configuration, "_ensure_dotenv", lambda: None)
+    monkeypatch.setattr(settings, "_ensure_dotenv", lambda: None)
     monkeypatch.setattr(
-        configuration,
+        settings,
         "get_llm_credentials",
         lambda provider, model, **kwargs: {"provider": "custom", "model": "m", "base_url": "https://provider.example/v1", "api_key": "k"},
     )
     monkeypatch.setenv("LANGCHAIN_PROVIDER", "custom")
     monkeypatch.setenv("LANGCHAIN_MODEL_NAME", "m")
     monkeypatch.delenv("VIBE_TRADING_DISABLE_HTTP_PROXY", raising=False)
-    configuration.reset_env_config()
+    settings.reset_env_config()
 
     _no_proxy(monkeypatch)
     direct = llm.build_llm()

@@ -9,7 +9,7 @@ path, OS username, and API key are never logged (CWE-209).
 
 from __future__ import annotations
 
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import getpass
 import logging
@@ -20,7 +20,7 @@ import pytest
 import src.providers.llm as llm
 from src.config.accessor import get_env_config, reset_env_config
 
-LOGGER = "src.providers.configuration"
+LOGGER = "src.providers.settings"
 
 
 @pytest.fixture

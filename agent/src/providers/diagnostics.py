@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from src.providers import adapters
-from src.providers.configuration import resolve_config
+from src.providers.settings import resolve_config
 
 
 def _redact_base_url_for_log(raw: str | None) -> str:

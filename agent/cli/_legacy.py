@@ -424,7 +424,7 @@ def _terminal_width() -> int:
 def _ensure_cli_env() -> None:
     """Load dotenv values before a CLI path reads configuration."""
     try:
-        from src.providers.llm import _ensure_dotenv
+        from src.providers.settings import _ensure_dotenv
 
         _ensure_dotenv()
     except Exception:
@@ -3526,7 +3526,7 @@ def cmd_live_authorize(broker: str) -> int:
 
 def cmd_provider_doctor() -> int:
     """Print redacted provider diagnostics."""
-    from src.providers.llm import provider_diagnostics
+    from src.providers.diagnostics import provider_diagnostics
 
     console.print_json(data=provider_diagnostics())
     return EXIT_SUCCESS

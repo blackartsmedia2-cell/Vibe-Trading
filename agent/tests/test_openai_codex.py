@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import json
 import time

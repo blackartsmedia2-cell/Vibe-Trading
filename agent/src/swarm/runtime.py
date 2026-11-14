@@ -24,7 +24,8 @@ from typing import Callable
 
 from src.config.accessor import get_env_config
 from src.config.schema import AgentConfig
-from src.providers.llm import _ensure_dotenv, uses_responses_api
+from src.providers.settings import _ensure_dotenv
+from src.providers.adapters import uses_responses_api
 from src.swarm import grounding
 from src.swarm.models import (
     RunStatus,

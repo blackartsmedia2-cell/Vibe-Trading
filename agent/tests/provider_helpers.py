@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from src.providers.chat import ChatLLM
-from src.providers.configuration import resolve_config
+from src.providers.settings import resolve_config
 
 
 def chat_with_adapter(adapter, model="test"):

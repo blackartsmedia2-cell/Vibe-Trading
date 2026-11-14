@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.providers import adapters as _provider_adapters
-from src.providers import configuration as _provider_configuration
+from src.providers import settings as _provider_configuration
 
 import asyncio
 import json
@@ -14,11 +14,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from src.providers.capabilities import (
-    get_llm_credentials,
-    get_provider_capabilities,
-    provider_env_names,
-)
+from src.providers.settings import get_llm_credentials
+from src.providers.registry import get_provider_capabilities, provider_env_names
 from src.providers.llm import ChatOpenAIWithReasoning, _sync_provider_env, build_llm
 
 

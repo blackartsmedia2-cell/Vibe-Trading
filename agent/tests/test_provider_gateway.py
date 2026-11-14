@@ -7,8 +7,8 @@ from contextlib import closing
 from tests.provider_helpers import provider_server as provider_server
 
 from src.providers.registry import provider_catalog as catalog
-from src.providers.configuration import resolve_config
-from src.providers.capabilities import get_provider_capabilities
+from src.providers.settings import resolve_config
+from src.providers.registry import get_provider_capabilities
 
 
 def test_model_inference_does_not_change_explicit_adapter_family(monkeypatch):
@@ -80,3 +80,42 @@ def test_settings_to_real_sdk_stream_and_tool_followup(tmp_path, monkeypatch, pr
     assert len(received) == 2
     assert all(path == "/v1/chat/completions" for path, _, _ in received)
     assert received[1][2]["messages"][-1]["tool_call_id"] == "call_quote"
+
+
+def test_catalog_only_provider_reaches_settings_and_real_sdk(tmp_path, monkeypatch, provider_server):
+    """A new compatible provider needs data only, including its secret allowlist."""
+    import json
+    from src.providers import registry
+    from src.providers.chat import ChatLLM
+    from src.providers.settings import secret_names
+    from src.api.settings_routes import _load_llm_providers
+
+    base_url, received = provider_server
+    row = {
+        "name": "catalog-test", "label": "Catalog Test", "api_key_env": "CATALOG_TEST_KEY",
+        "base_url_env": "CATALOG_TEST_URL", "default_model": "catalog-model",
+        "default_base_url": base_url, "api_key_required": True,
+        "setup": {"order": 100}, "onboarding": {"order": 100},
+    }
+    path = tmp_path / "providers.json"
+    path.write_text(json.dumps([*registry._catalog(), row]))
+    monkeypatch.setattr(registry, "CATALOG_PATH", path)
+    registry._catalog.cache_clear()
+    registry.get_provider_capabilities.cache_clear()
+    try:
+        assert "catalog-test" in registry.provider_names()
+        assert _load_llm_providers()[-1].name == "catalog-test"
+        assert registry.setup_choices()[-1]["key_env"] == "CATALOG_TEST_KEY"
+        assert registry.onboarding_choices()[-1]["key"] == "catalog-test"
+        assert "CATALOG_TEST_KEY" in secret_names()
+        config = resolve_config(environment={
+            "LANGCHAIN_PROVIDER": "catalog-test", "LANGCHAIN_MODEL_NAME": "catalog-model",
+            "CATALOG_TEST_KEY": "catalog-secret", "OPENAI_API_KEY": "wrong-secret",
+            "LANGCHAIN_USE_RESPONSES_API": "false", "VIBE_TRADING_DISABLE_HTTP_PROXY": "1",
+        })
+        with closing(ChatLLM(snapshot=config)) as llm:
+            assert llm.chat([{"role": "user", "content": "hello"}]).content == "catalog-model"
+        assert received[0][1]["Authorization"] == "Bearer catalog-secret"
+    finally:
+        registry._catalog.cache_clear()
+        registry.get_provider_capabilities.cache_clear()

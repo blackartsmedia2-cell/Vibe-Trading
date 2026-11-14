@@ -1,7 +1,7 @@
 """Paid responses remain accounted for when compaction or Stop interrupts work."""
 
 from src.providers import adapters as _provider_adapters
-from src.providers.configuration import resolve_config
+from src.providers.settings import resolve_config
 
 from types import SimpleNamespace
 from unittest.mock import Mock

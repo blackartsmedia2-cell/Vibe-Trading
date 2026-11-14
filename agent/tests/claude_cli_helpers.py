@@ -194,8 +194,8 @@ def use_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     Args:
         monkeypatch: Fixture used to set the provider environment.
     """
-    import src.providers.llm as llm
+    from src.providers import settings
 
     monkeypatch.setenv("LANGCHAIN_PROVIDER", "claude-cli")
     monkeypatch.setenv("LANGCHAIN_MODEL_NAME", "claude-opus-5-5")
-    monkeypatch.setattr(llm, "_ensure_dotenv", lambda: None)
+    monkeypatch.setattr(settings, "_ensure_dotenv", lambda: None)

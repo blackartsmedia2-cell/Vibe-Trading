@@ -182,7 +182,7 @@ def test_activate_constructs_a_model_with_one_vault_profile(
     client, custom_store, tmp_path, monkeypatch
 ):
     from src.providers import custom_profiles, llm
-    from src.providers.capabilities import get_llm_credentials
+    from src.providers.settings import get_llm_credentials
 
     custom_store.save(profile_id="alpha", label="Alpha", base_url="https://alpha.example/v1", model="alpha-model", api_key="alpha-secret")
     monkeypatch.setattr(custom_profiles, "CustomProviderStore", lambda: custom_store)
@@ -216,7 +216,7 @@ def test_activate_constructs_a_model_with_one_vault_profile(
 
 def test_missing_vault_profile_never_falls_back_to_an_ambient_key(custom_store, monkeypatch):
     from src.providers import custom_profiles
-    from src.providers.capabilities import get_llm_credentials
+    from src.providers.settings import get_llm_credentials
 
     monkeypatch.setattr(custom_profiles, "CustomProviderStore", lambda: custom_store)
     monkeypatch.setenv("OPENAI_API_KEY", "other-provider-secret")

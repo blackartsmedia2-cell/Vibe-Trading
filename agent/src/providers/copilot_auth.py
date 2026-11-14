@@ -14,6 +14,7 @@ import queue
 import shutil
 import subprocess
 import threading
+from time import monotonic
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -58,6 +59,25 @@ def resolve_copilot_token() -> tuple[str, str]:
             return token, name
     token = gh_cli_token()
     return (token, "gh auth token") if token else ("", "")
+
+
+_GH_CLI_TOKEN_TTL_SECONDS = 60.0
+_gh_cli_token_cache: tuple[float, str] | None = None
+_gh_cli_token_lock = threading.Lock()
+
+
+def _gh_cli_token() -> str:
+    """Return an explicit Copilot token; the SDK handles stored credentials."""
+    global _gh_cli_token_cache
+
+    with _gh_cli_token_lock:
+        now = monotonic()
+        if _gh_cli_token_cache is not None and now - _gh_cli_token_cache[0] < _GH_CLI_TOKEN_TTL_SECONDS:
+            return _gh_cli_token_cache[1]
+
+        token = resolve_copilot_token()[0]
+        _gh_cli_token_cache = (monotonic(), token)
+        return token
 
 
 def get_copilot_login_status() -> Optional[str]:
