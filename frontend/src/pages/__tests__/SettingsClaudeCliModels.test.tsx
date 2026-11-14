@@ -96,11 +96,21 @@ function effortOptions(): string[] {
   return Array.from(effortSelect().options).map((option) => option.value);
 }
 
-it.each(["opencode", "novita"])("saves %s credentials through the desktop store", async (name) => {
-  const provider = providerCatalog.find((entry) => entry.name === name)!;
+const catalogOnlyProvider = {
+  ...providerCatalog.find((entry) => entry.name === "novita")!,
+  name: "catalog-test", label: "Catalog Test", api_key_env: "CATALOG_TEST_KEY",
+  base_url_env: "CATALOG_TEST_URL", default_model: "catalog-model",
+};
+
+it.each([
+  ...providerCatalog.filter((p) => ["opencode", "novita"].includes(p.name)).map((provider) => ({ provider, isDesktop: true })),
+  { provider: catalogOnlyProvider, isDesktop: true },
+  { provider: catalogOnlyProvider, isDesktop: false },
+])("saves $provider.name credentials (desktop=$isDesktop)", async ({ provider, isDesktop }) => {
+  const name = provider.name;
   const settings = llmSettings({ provider: name, providers: [provider], model_name: provider.default_model });
   const desktop = { isDesktop: true, setCredential: vi.fn().mockResolvedValue({}), restartBackend: vi.fn().mockResolvedValue(true) };
-  vi.stubGlobal("vibeDesktop", desktop);
+  vi.stubGlobal("vibeDesktop", isDesktop ? desktop : undefined);
   try {
     apiMock.getLLMSettings.mockResolvedValue(settings);
     apiMock.getDataSourceSettings.mockResolvedValue({});
@@ -109,11 +119,16 @@ it.each(["opencode", "novita"])("saves %s credentials through the desktop store"
     const form = (await screen.findByDisplayValue(provider.label)).closest("form")!;
     fireEvent.change(form.querySelector('input[type="password"]')!, { target: { value: "desktop-test-secret" } });
     fireEvent.click(form.querySelector('button[type="submit"]')!);
-    await waitFor(() => expect(desktop.restartBackend).toHaveBeenCalled());
-    expect(desktop.setCredential).toHaveBeenCalledWith(provider.api_key_env, "desktop-test-secret");
+    await waitFor(() => expect(apiMock.updateLLMSettings).toHaveBeenCalled());
     expect(apiMock.updateLLMSettings).toHaveBeenLastCalledWith(expect.objectContaining({
-      provider: name, api_key: undefined, clear_api_key: false,
+      provider: name, api_key: isDesktop ? undefined : "desktop-test-secret", clear_api_key: false,
     }));
+    if (isDesktop) {
+      await waitFor(() => expect(desktop.restartBackend).toHaveBeenCalled());
+      expect(desktop.setCredential).toHaveBeenCalledWith(provider.api_key_env, "desktop-test-secret");
+    } else {
+      expect(desktop.setCredential).not.toHaveBeenCalled();
+    }
   } finally {
     vi.unstubAllGlobals();
   }

@@ -67,10 +67,12 @@ async function run() {
     assert.deepEqual(reloadedStore.status().migrated, []);
     assert.ok(!(await fs.readFile(path.join(configDirectory, ".env"), "utf8")).includes("stale-secret"));
 
-    await store.set("OPENAI_API_KEY", "desktop-smoke-replacement");
-    assert.equal(store.environment().OPENAI_API_KEY, "desktop-smoke-replacement");
-    await store.set("OPENAI_API_KEY", null);
-    assert.equal(store.environment().OPENAI_API_KEY, undefined);
+    for (const name of names) {
+      await store.set(name, "desktop-smoke-replacement");
+      assert.equal(store.environment()[name], "desktop-smoke-replacement");
+      await store.set(name, null);
+      assert.equal(store.environment()[name], undefined);
+    }
     await assert.rejects(
       store.set("UNSUPPORTED_SECRET", "not-allowed"),
       /This credential key is not supported\./u,

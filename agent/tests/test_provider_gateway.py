@@ -82,13 +82,15 @@ def test_settings_to_real_sdk_stream_and_tool_followup(tmp_path, monkeypatch, pr
     assert received[1][2]["messages"][-1]["tool_call_id"] == "call_quote"
 
 
-def test_catalog_only_provider_reaches_settings_and_real_sdk(tmp_path, monkeypatch, provider_server):
-    """A new compatible provider needs data only, including its secret allowlist."""
+def test_catalog_only_provider_reaches_settings_and_real_sdk(tmp_path, provider_server):
+    """Cold-start CLI setup -> API update -> frozen clients -> actual HTTP requests."""
     import json
-    from src.providers import registry
-    from src.providers.chat import ChatLLM
-    from src.providers.settings import secret_names
-    from src.api.settings_routes import _load_llm_providers
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    from textwrap import dedent
+    from src.providers.registry import CATALOG_PATH
 
     base_url, received = provider_server
     row = {
@@ -98,24 +100,51 @@ def test_catalog_only_provider_reaches_settings_and_real_sdk(tmp_path, monkeypat
         "setup": {"order": 100}, "onboarding": {"order": 100},
     }
     path = tmp_path / "providers.json"
-    path.write_text(json.dumps([*registry._catalog(), row]))
-    monkeypatch.setattr(registry, "CATALOG_PATH", path)
-    registry._catalog.cache_clear()
-    registry.get_provider_capabilities.cache_clear()
-    try:
-        assert "catalog-test" in registry.provider_names()
-        assert _load_llm_providers()[-1].name == "catalog-test"
-        assert registry.setup_choices()[-1]["key_env"] == "CATALOG_TEST_KEY"
-        assert registry.onboarding_choices()[-1]["key"] == "catalog-test"
-        assert "CATALOG_TEST_KEY" in secret_names()
-        config = resolve_config(environment={
-            "LANGCHAIN_PROVIDER": "catalog-test", "LANGCHAIN_MODEL_NAME": "catalog-model",
-            "CATALOG_TEST_KEY": "catalog-secret", "OPENAI_API_KEY": "wrong-secret",
-            "LANGCHAIN_USE_RESPONSES_API": "false", "VIBE_TRADING_DISABLE_HTTP_PROXY": "1",
-        })
-        with closing(ChatLLM(snapshot=config)) as llm:
-            assert llm.chat([{"role": "user", "content": "hello"}]).content == "catalog-model"
-        assert received[0][1]["Authorization"] == "Bearer catalog-secret"
-    finally:
-        registry._catalog.cache_clear()
-        registry.get_provider_capabilities.cache_clear()
+    path.write_text(json.dumps([*json.loads(CATALOG_PATH.read_text()), row]))
+    script = dedent("""
+        import os, sys
+        from pathlib import Path
+        from contextlib import closing
+        from unittest.mock import patch
+        from src.providers import registry
+        registry.CATALOG_PATH = Path(sys.argv[1])
+        from cli import _legacy, onboard
+        from src.providers.chat import ChatLLM
+        from src.providers.settings import SettingsStore, secret_names
+        assert onboard.PROVIDERS[-1].key == "catalog-test"
+        with patch.object(_legacy.IntPrompt, "ask", return_value=len(_legacy._PROVIDER_CHOICES)), \
+             patch.object(_legacy.Prompt, "ask", side_effect=["cli-secret", sys.argv[2], "cli-model", ""]):
+            assert _legacy.cmd_init() == 0
+        with closing(ChatLLM()) as old:
+            import api_server
+            from fastapi.testclient import TestClient
+            with TestClient(api_server.app, client=("127.0.0.1", 50000)) as api:
+                current = api.get("/settings/llm").json()
+                assert current["provider"] == "catalog-test" and current["api_key_configured"]
+                assert current["providers"][-1]["api_key_env"] == "CATALOG_TEST_KEY"
+                response = api.put("/settings/llm", json={
+                    "provider": "catalog-test", "model_name": "api-model", "api_key": "api-secret",
+                })
+                assert response.status_code == 200, response.text
+                assert "api-secret" not in response.text and "cli-secret" not in response.text
+                with closing(ChatLLM()) as new:
+                    assert new.chat([{"role": "user", "content": "hello"}]).content == "api-model"
+                assert old.chat([{"role": "user", "content": "hello"}]).content == "cli-model"
+                os.environ["VIBE_TRADING_DESKTOP_SECURE_CREDENTIALS"] = "1"
+                assert "CATALOG_TEST_KEY" in secret_names()
+                assert api.put("/settings/llm", json={"provider": "catalog-test", "model_name": "api-model"}).status_code == 200
+                assert SettingsStore().read()["CATALOG_TEST_KEY"] == "api-secret"
+                assert "api-secret" not in SettingsStore().path.read_text()
+        """)
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(path), base_url],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=90,
+        env={**{k: os.environ[k] for k in ("PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP") if k in os.environ},
+             "HOME": str(tmp_path), "USERPROFILE": str(tmp_path), "VIBE_TRADING_HOME": str(tmp_path),
+             "PYTHONPATH": str(Path(__file__).resolve().parents[1]), "OPENAI_API_KEY": "wrong-secret",
+             "LANGCHAIN_USE_RESPONSES_API": "false", "VIBE_TRADING_DISABLE_HTTP_PROXY": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [(body["model"], headers["Authorization"]) for _, headers, body in received] == [
+        ("api-model", "Bearer api-secret"), ("cli-model", "Bearer cli-secret"),
+    ]
