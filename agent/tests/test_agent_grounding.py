@@ -2260,20 +2260,61 @@ def test_a_conceptual_question_reaches_its_answer(
     assert ledger.validate_final_answer(answer).valid is True
 
 
+@pytest.mark.parametrize("question", [
+    "什么是市盈率估值法？请解释一下原理",
+    "请先用 load_skill 读取 investor-lenses，再解释如何区分企业质量和股票估值。",
+    "Explain the valuation of companies as a concept, using a skill.",
+])
+def test_valuation_concepts_can_stream_and_load_skills(tmp_path: Path, question: str) -> None:
+    """A topic is not an instrument; a later data call still needs identity."""
+    ledger = GroundingLedger(run_dir=tmp_path, user_message=question)
+    skill = {"name": "investor-lenses"}
+    assert ledger.identity_status == "not_required"
+    assert not ledger.should_buffer_output
+    assert ledger.authorize_tool_call(
+        "load_skill", skill, batch_authorized_symbols=(), call_id="concept",
+    ).allowed
+    ledger.ingest_tool_result(
+        tool_name="load_skill", arguments=skill, call_id="concept", success=True,
+        result=json.dumps({"status": "ok", "mode": "document", "total_chars": 9297,
+                           "offset": 0, "next_offset": 1000, "content": "Valuation principles"}),
+    )
+    assert not ledger.should_buffer_output
+
+    # Becoming a market request does not inherit the conceptual permission.
+    decision = ledger.authorize_tool_call(
+        "get_market_data", {"codes": ["600519.SH"]},
+        batch_authorized_symbols=(), call_id="quote",
+    )
+    assert not decision.allowed and decision.error_code == "identity_required"
+    assert ledger.should_buffer_output
+    assert not ledger.authorize_tool_call(
+        "load_skill", skill, batch_authorized_symbols=(), call_id="market",
+    ).allowed
+
+
+@pytest.mark.parametrize("question", [
+    "茅台适合买入吗", "茅台估值", "valuation of Moutai",
+    "解释企业质量和股票估值的区别",
+])
 @pytest.mark.parametrize(
-    "answer",
+    ("answer", "figure"),
     [
-        "贵州茅台现价约 1300 元，建议买入。",
-        "600519.SH 收盘价 1300.00 元（source: tencent），建议买入。",
+        ("贵州茅台现价约 1300 元，建议买入。", "1300"),
+        ("600519.SH 收盘价 1300.00 元（source: tencent），建议买入。", "1300.00"),
+        ("贵州茅台市盈率为 18.50 倍。", "18.50"),
     ],
 )
 def test_an_unevidenced_price_is_still_rejected_without_any_tool_call(
     tmp_path: Path,
+    question: str,
     answer: str,
+    figure: str,
 ) -> None:
     """Relaxing the identity check must not license a remembered quote."""
-    ledger = GroundingLedger(run_dir=tmp_path, user_message="茅台适合买入吗")
+    ledger = GroundingLedger(run_dir=tmp_path, user_message=question)
 
+    assert ledger.streamable_length(answer) <= answer.index(figure)
     result = ledger.validate_final_answer(answer)
 
     assert result.valid is False
