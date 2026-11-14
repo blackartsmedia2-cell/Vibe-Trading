@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import threading
@@ -210,7 +211,9 @@ def test_failed_cli_refresh_does_not_reuse_expired_token(monkeypatch, failure):
     assert caps_mod._gh_cli_token_cache == (60.0, "")
 
 
-def test_same_sdk_wrapper_resolves_credentials_for_each_request(no_ambient_credentials, monkeypatch) -> None:
+@pytest.mark.parametrize("method", ["invoke", "ainvoke", "stream"])
+@pytest.mark.parametrize("token", [None, "gho_snapshot"])
+def test_same_sdk_wrapper_resolves_credentials_for_each_request(no_ambient_credentials, monkeypatch, method, token) -> None:
     """Exercise the real wrapper/client boundary without a Copilot account."""
     sdk = ModuleType("copilot")
     events = ModuleType("copilot.session_events")
@@ -268,10 +271,17 @@ def test_same_sdk_wrapper_resolves_credentials_for_each_request(no_ambient_crede
     monkeypatch.setattr(copilot_auth, "gh_cli_token", lambda: next(tokens))
     # A stale diagnostic cache must never leak into the SDK request path.
     caps_mod._gh_cli_token_cache = (0.0, "gho_stale_diagnostic")
-    llm = copilot_auth.CopilotSDKLLM(model="test-model", timeout=2)
+    llm = copilot_auth.CopilotSDKLLM(model="test-model", timeout=2, token=token).bind_tools([])
+    if token:
+        monkeypatch.setenv("COPILOT_GITHUB_TOKEN", "gho_new_default")
     for _ in range(3):
-        assert llm.invoke([{"role": "user", "content": "hello"}]).content == "ok"
-    assert seen_options == [{"github_token": "gho_first"}, {"github_token": "gho_rotated"}, {}]
+        result = getattr(llm, method)([{"role": "user", "content": "hello"}])
+        if method == "ainvoke":
+            result = asyncio.run(result)
+        content = "".join(chunk.content for chunk in result) if method == "stream" else result.content
+        assert content == "ok"
+    expected = [{"github_token": token}] * 3 if token else [{"github_token": "gho_first"}, {"github_token": "gho_rotated"}, {}]
+    assert seen_options == expected
 
 
 def test_credentials_do_not_require_openai_base_url(

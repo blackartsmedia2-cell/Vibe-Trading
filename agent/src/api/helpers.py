@@ -8,6 +8,15 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse
 
+from src.config.dotenv import (
+    _atomic_write_secret as _atomic_write_secret,
+    _dotenv_key as _dotenv_key,
+    _ensure_agent_env_file as _ensure_agent_env_file,
+    _format_env_value as _format_env_value,
+    _read_env_values as _read_env_values,
+    _strip_env_value as _strip_env_value,
+    _write_env_values as _write_env_values,
+)
 from src.config.paths import get_runs_dir, get_sessions_dir, get_uploads_dir
 
 
@@ -66,16 +75,6 @@ async def _spa_html_deep_link_fallback(request: Request, call_next):
 # ============================================================================
 
 
-
-
-
-
-
-
-
-
-
-
 def _project_relative_path(path: Path) -> str:
     """Return a project-relative display path without leaking an absolute path."""
     if path == ENV_PATH:
@@ -84,10 +83,6 @@ def _project_relative_path(path: Path) -> str:
         return path.resolve().relative_to(AGENT_DIR.parent.resolve()).as_posix()
     except ValueError:
         return path.name
-
-
-
-
 
 
 def _is_configured_secret(value: str, placeholders: set[str]) -> bool:
@@ -123,7 +118,3 @@ def _validate_path_param(value: str, kind: str) -> None:
     """Reject path parameters that could escape the parent directory."""
     if not _SAFE_PATH_PARAM_RE.fullmatch(value or ""):
         raise HTTPException(status_code=400, detail=f"invalid {kind}")
-
-from src.config.dotenv import (
-    _atomic_write_secret as _atomic_write_secret, _dotenv_key as _dotenv_key, _ensure_agent_env_file as _ensure_agent_env_file, _format_env_value as _format_env_value, _read_env_values as _read_env_values, _strip_env_value as _strip_env_value, _write_env_values as _write_env_values
-)

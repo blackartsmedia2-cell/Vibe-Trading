@@ -10,6 +10,8 @@ from threading import Lock
 from time import monotonic
 from typing import Mapping, Optional
 
+from src.providers.registry import capability_records, provider_catalog
+
 
 @dataclass(frozen=True)
 class ProviderCapabilities:
@@ -106,8 +108,6 @@ def _gh_cli_token() -> str:
 # Catalog flags preserve the existing protocol contracts: top-level reasoning
 # remains opt-in; Moonshot model/endpoint checks stay in the adapter; opaque
 # reasoning and thought-signature fields still round-trip only where declared.
-from src.providers.registry import capability_records, provider_catalog
-
 def _catalog_capabilities() -> dict[str, ProviderCapabilities]:
     """Build capability records, retaining identity for canonical aliases."""
     records: dict[str, ProviderCapabilities] = {}

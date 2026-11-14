@@ -367,6 +367,7 @@ class CopilotSDKLLM:
         result = asyncio.run(
             _run_copilot(
                 model=self.model,
+                token=self._token,
                 messages=messages,
                 tools=self.tools,
                 timeout=timeout,

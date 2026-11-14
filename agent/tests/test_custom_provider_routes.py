@@ -248,7 +248,6 @@ def test_full_completion_url_normalizes_to_the_runtime_api_root():
 
 
 def test_failed_activation_keeps_previous_profile(custom_store, tmp_path, monkeypatch):
-    from src.api import settings_routes
     from src.providers.settings import SettingsStore
 
     for name in ("first", "second"):
@@ -285,7 +284,10 @@ def test_cli_custom_commands_are_registered():
     import subprocess
     import sys
 
-    result = subprocess.run([sys.executable, "-m", "cli.main", "provider", "custom", "--help"], capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "cli.main", "provider", "custom", "--help"],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+    )
     assert result.returncode == 0
     assert "activate" in result.stdout
     assert "add" in result.stdout
