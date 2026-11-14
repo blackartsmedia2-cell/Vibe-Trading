@@ -117,6 +117,34 @@ def test_snapshot_defaults_are_explicit_immutable_and_secret_free(monkeypatch):
         snapshot.options.langchain_temperature = 1
 
 
+@pytest.mark.parametrize("provider", ["openai", "deepseek", "anthropic"])
+@pytest.mark.parametrize("mode", ["chat", "stream", "async"])
+def test_cross_origin_redirect_never_receives_credentials(provider_server, provider, mode):
+    if provider != "openai":
+        pytest.importorskip(f"langchain_{provider}")
+    base_url, received = provider_server
+    snapshot = resolve_config(environment={
+        "LANGCHAIN_PROVIDER": provider, "LANGCHAIN_MODEL_NAME": "test",
+        f"{provider.upper()}_API_KEY": "private-fixture-key",
+        f"{provider.upper()}_BASE_URL": base_url + "/external",
+        "ANTHROPIC_MAX_TOKENS": "128", "TIMEOUT_SECONDS": "5", "MAX_RETRIES": "0",
+        "VIBE_TRADING_DISABLE_HTTP_PROXY": "1", "LANGCHAIN_USE_RESPONSES_API": "false",
+    })
+    with closing(ChatLLM(snapshot=snapshot)) as client:
+        with pytest.raises(Exception) as failure:
+            if mode == "async":
+                asyncio.run(client._llm.ainvoke("private prompt"))
+            else:
+                call = client.stream_chat if mode == "stream" else client.chat
+                call([{"role": "user", "content": "private prompt"}])
+        error = llm_module.unwrap_provider_error(failure.value)
+        assert isinstance(error, llm_module.ProviderRedirectError)
+        assert "Configure the final provider base URL" in str(error)
+        if mode == "stream":
+            assert isinstance(failure.value, ProviderStreamError) and not failure.value.retryable
+    assert received == []  # Neither the key nor the prompt reaches the other origin.
+
+
 @pytest.mark.parametrize("empty_stream", [False, True])
 def test_stream_errors_keep_original_provider_and_redact_original_key(monkeypatch, empty_stream):
     snapshot = resolve_config(

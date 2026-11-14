@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from src.providers.content_filter import is_content_filter_triggered
-from src.providers.llm import build_llm
+from src.providers.llm import build_llm, unwrap_provider_error
 from src.providers.settings import ProviderConfig, resolve_config
 from src.providers.stream_guard import StreamInterrupted, supervised_pulls
 from src.providers.tool_policy import offered_tools
@@ -189,6 +189,7 @@ class ProviderStreamError(RuntimeError):
         self.model = model
         self.original = original
         self.usage_metadata = usage_metadata
+        original = unwrap_provider_error(original)
         self.status_code: Optional[int] = getattr(original, "status_code", None)
         self.retry_after_s: Optional[float] = _extract_retry_after_s(original)
         safe_message = _redact_provider_error(str(original))
@@ -483,7 +484,12 @@ class ChatLLM:
         llm = self._llm.bind_tools(available) if available else self._llm
         config = {"timeout": timeout} if timeout else {}
         messages, call_kwargs = self._prompt_cache_request(messages)
-        ai_message = llm.invoke(messages, config=config, **call_kwargs)
+        try:
+            ai_message = llm.invoke(messages, config=config, **call_kwargs)
+        except Exception as exc:
+            if (cause := unwrap_provider_error(exc)) is not exc:
+                raise cause from None
+            raise
         return self._parse_response(ai_message)
 
     def stream_chat(

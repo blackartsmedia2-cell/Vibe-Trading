@@ -83,6 +83,49 @@ def _build_http_clients(proxy: str | None = None, *, sdk: Any = None) -> tuple[A
     )
 
 
+class ProviderRedirectError(ValueError):
+    """A provider redirect would send a request outside its configured origin."""
+
+    status_code = 400
+
+
+def _check_provider_redirect(response: Any) -> None:
+    """Allow redirects only within the same scheme, host and port."""
+    if response.has_redirect_location:
+        source = response.request.url
+        target = source.join(response.headers["location"])
+        if (source.scheme, source.host, source.port) != (target.scheme, target.host, target.port):
+            raise ProviderRedirectError(
+                "Cross-origin provider redirect refused. Configure the final provider base URL explicitly."
+            )
+
+
+async def _check_async_provider_redirect(response: Any) -> None:
+    """Apply the same origin check on async HTTP clients."""
+    _check_provider_redirect(response)
+
+
+def _guard_provider_redirects(sync_sdk: Any, async_sdk: Any) -> None:
+    """Protect SDK transports without changing their ownership or defaults."""
+    # Stateless hooks are safe on LangChain's shared transports; install once.
+    for sdk, hook in ((sync_sdk, _check_provider_redirect), (async_sdk, _check_async_provider_redirect)):
+        client = getattr(sdk, "_client", None)
+        if client is not None and hook not in client.event_hooks["response"]:
+            client.event_hooks["response"].append(hook)
+
+
+def unwrap_provider_error(error: Exception) -> Exception:
+    """Preserve a deterministic redirect refusal through SDK connection wrappers."""
+    cause = error
+    seen = set()
+    while cause is not None and id(cause) not in seen:
+        if isinstance(cause, ProviderRedirectError):
+            return cause
+        seen.add(id(cause))
+        cause = cause.__cause__
+    return error
+
+
 _OPENCODE_PROVIDER_NAMES = frozenset({"opencode", "opencode-go", "opencode-zen"})
 _OPENCODE_SESSION_HEADER = "x-opencode-session"
 
@@ -328,6 +371,7 @@ if ChatOpenAI is not None:
                 os.getenv("OPENAI_CUSTOM_HEADERS")  # noqa: env-gate — SDK header isolation
             )
             super().__init__(*args, **kwargs)
+            _guard_provider_redirects(self.root_client, self.root_async_client)
             if vibe_environment is not None:
                 # SDK constructors may read ambient custom headers even with
                 # explicit credentials. Replace only their captured overrides;
@@ -926,6 +970,7 @@ def _build_native_deepseek(
     )
     # Unlike ChatOpenAI, ChatDeepSeek constructs per-instance SDK clients.
     client._vibe_owned_http_clients = clients or (client.root_client, client.root_async_client)
+    _guard_provider_redirects(client.root_client, client.root_async_client)
     for sdk in (getattr(client, "root_client", None), getattr(client, "root_async_client", None)):
         if sdk is not None:
             sdk._custom_headers = {}
@@ -1258,6 +1303,7 @@ def _build_anthropic(
             client._client = sdk_module.Anthropic(**params, http_client=clients[0])
             client._async_client = sdk_module.AsyncAnthropic(**params, http_client=clients[1])
         client._vibe_owned_http_clients = clients or ()
+        _guard_provider_redirects(client._client, client._async_client)
         for sdk in (client._client, client._async_client):
             sdk.api_key, sdk.auth_token = params["api_key"], params["auth_token"]
             sdk._custom_headers = dict(headers)
