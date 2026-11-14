@@ -2264,6 +2264,9 @@ def test_a_conceptual_question_reaches_its_answer(
     "什么是市盈率估值法？请解释一下原理",
     "请先用 load_skill 读取 investor-lenses，再解释如何区分企业质量和股票估值。",
     "Explain the valuation of companies as a concept, using a skill.",
+    "只解释估值方法，不计算估值。",
+    "先读取 valuation-model 技能；只解释方法，不涉及具体证券、不查行情、不计算估值、不交易。",
+    "不计算估值，只说明所需数据。",
 ])
 def test_valuation_concepts_can_stream_and_load_skills(tmp_path: Path, question: str) -> None:
     """A topic is not an instrument; a later data call still needs identity."""
@@ -2286,11 +2289,16 @@ def test_valuation_concepts_can_stream_and_load_skills(tmp_path: Path, question:
         "get_market_data", {"codes": ["600519.SH"]},
         batch_authorized_symbols=(), call_id="quote",
     )
-    assert not decision.allowed and decision.error_code == "identity_required"
-    assert ledger.should_buffer_output
-    assert not ledger.authorize_tool_call(
-        "load_skill", skill, batch_authorized_symbols=(), call_id="market",
-    ).allowed
+    assert not decision.allowed
+    if not ledger.market_data_allowed:
+        assert decision.error_code == "user_market_data_restriction"
+        assert not ledger.should_buffer_output
+    else:
+        assert decision.error_code == "identity_required"
+        assert ledger.should_buffer_output
+        assert not ledger.authorize_tool_call(
+            "load_skill", skill, batch_authorized_symbols=(), call_id="market",
+        ).allowed
 
 
 @pytest.mark.parametrize("question", [
@@ -2299,6 +2307,9 @@ def test_valuation_concepts_can_stream_and_load_skills(tmp_path: Path, question:
     "什么是估值？顺便算一下茅台估值", "茅台估值，先解释企业质量和股票估值的区别",
     "请解释企业质量和股票估值的区别，再查询茅台现价",
     "什么是估值？以 600519.SH 为例",
+    "不计算估值，但请查茅台现价",
+    "不计算估值，解释茅台估值的方法",
+    "不要计算估值，茅台市盈率估值是多少？",
 ])
 def test_specific_valuation_keeps_identity_gate(tmp_path: Path, question: str) -> None:
     """Concept wording must not exempt a named company or a mixed request."""
@@ -2317,7 +2328,7 @@ def test_specific_valuation_keeps_identity_gate(tmp_path: Path, question: str) -
 
 @pytest.mark.parametrize("question", [
     "茅台适合买入吗", "茅台估值", "valuation of Moutai",
-    "解释企业质量和股票估值的区别",
+    "解释企业质量和股票估值的区别", "不计算估值，只说明方法",
 ])
 @pytest.mark.parametrize(
     ("answer", "figure"),

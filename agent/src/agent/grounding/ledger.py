@@ -74,17 +74,18 @@ def _passed_figures(
     return tuple(passed)
 
 
-# Exempt only complete, explicitly generic clauses. Free-form subjects such as
-# "茅台估值" / "valuation of Moutai" and mixed requests keep the market gate.
-_VALUATION_CONCEPT_RE = re.compile(
-    r"(?:^|(?<=[，,。；;？！?!\n]))\s*(?:"
-    r"(?:请)?(?:再)?(?:解释|介绍|说明|讲解|什么是|何谓)(?:一下)?"
+# Exempt only complete generic or negated valuation clauses. A separate named
+# company/price request still keeps the market gate; number validation is unchanged.
+_NON_ACTIONABLE_VALUATION_RE = re.compile(
+    r"(?:^|(?<=[，,、。；;？！?!\n]))\s*(?:"
+    r"(?:请)?(?:再|只|仅)?(?:解释|介绍|说明|讲解|什么是|何谓)(?:一下)?"
     r"(?:企业|公司|股票|市盈率|市净率)?估值(?:法|方法|原理|概念)?(?:的(?:原理|概念|方法))?"
     r"|(?:请)?(?:再)?(?:解释|说明)?(?:如何)?区分企业质量(?:和|与)股票估值"
     r"|(?:请)?(?:再)?(?:解释|说明)企业质量(?:和|与)股票估值的(?:区别|差异)"
+    r"|(?:这轮|本轮|现在)?(?:不|不要|无需|不必)(?:计算|测算|提供|给出)估值(?:数字|结果)?"
     r"|(?:please\s+)?(?:explain|describe|what is)\s+(?:the\s+)?"
     r"valuation(?:\s+of\s+(?:companies|stocks|businesses))?(?:\s+as a concept)?"
-    r")\s*(?=$|[，,。；;？！?!\n])",
+    r")\s*(?=$|[，,、。；;？！?!.\n])",
     re.IGNORECASE,
 )
 
@@ -207,7 +208,7 @@ class GroundingLedger(
         self._backtest_scopes: dict[str, str] = {}
         self._scope_latest: dict[str, str] = {}
         self._identity_required = bool(
-            _ACTIONABLE_MARKET_RE.search(_VALUATION_CONCEPT_RE.sub("", user_message))
+            _ACTIONABLE_MARKET_RE.search(_NON_ACTIONABLE_VALUATION_RE.sub("", user_message))
         )
         self._buffer_output = self._identity_required
         # Every instrument this run is entitled to write about: the ones the
