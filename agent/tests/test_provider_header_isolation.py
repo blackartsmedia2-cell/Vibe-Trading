@@ -41,9 +41,11 @@ def _stream_response(text: str) -> httpx.Response:
 
 
 @pytest.mark.skipif(ChatOpenAIWithReasoning is None, reason="langchain-openai is not installed")
-@pytest.mark.parametrize("provider", ["openai", "openrouter", "kimi-coding"])
+@pytest.mark.parametrize("provider,with_explicit_headers", [
+    ("openai", False), ("openrouter", False), ("openrouter", True), ("kimi-coding", True),
+], ids=["direct-openai", "relay-default-headers", "relay-explicit-headers", "kimi-explicit-headers"])
 @pytest.mark.parametrize("asynchronous", [False, True], ids=["sync", "async"])
-def test_stream_headers_stay_provider_scoped(provider, asynchronous):
+def test_stream_headers_stay_provider_scoped(provider, with_explicit_headers, asynchronous):
     """Direct OpenAI keeps its headers; relays isolate them on both stream paths."""
     seen = []
 
@@ -55,14 +57,15 @@ def test_stream_headers_stay_provider_scoped(provider, asynchronous):
     env = {
         "OPENAI_CUSTOM_HEADERS": "X-Debug: keep-me" if direct else (
             f"X-Debug: {'x' * 3069}à\nauthorization: stale-à\n"
-            "X-Explicit: ambient-value\nx-case: ambient-à\nuser-agent: ambient"
+            "X-Other: ambient\nX-Explicit: ambient-value\nx-case: ambient-à\nuser-agent: ambient"
         ),
         "OPENAI_ORG_ID": "org-test" if direct else "org-à",
         "OPENAI_PROJECT_ID": "project-test" if direct else "project-à",
     }
-    explicit = {} if direct else {
+    explicit = {
         "X-Explicit": "provider-value", "X-Case": "provider-value", "User-Agent": "provider-value",
-    }
+    } if with_explicit_headers else None
+
     async def scenario():
         with httpx.Client(transport=httpx.MockTransport(handler)) as sync_client:
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as async_client:
@@ -80,7 +83,8 @@ def test_stream_headers_stay_provider_scoped(provider, asynchronous):
     with patch.dict(os.environ, env, clear=True):
         result, adapter = asyncio.run(scenario())
 
-    assert result == "异步 résultat" and len(seen) == 1
+    assert result == "异步 résultat"
+    assert len(seen) == 1
     assert "异步 entrée" in seen[0].content.decode("utf-8")
     headers = seen[0].headers
     assert headers.get_list("authorization") == ["Bearer sk-test"]
@@ -89,16 +93,20 @@ def test_stream_headers_stay_provider_scoped(provider, asynchronous):
         assert headers["openai-organization"] == "org-test"
         assert headers["openai-project"] == "project-test"
     else:
-        assert not {"x-debug", "openai-organization", "openai-project"}.intersection(headers)
-        for name in explicit:
-            assert headers.get_list(name) == ["provider-value"]
+        assert not {"x-debug", "x-other", "openai-organization", "openai-project"}.intersection(headers)
         # SDK 2.x merges by spelling; 3.x applies Omit case-insensitively.
         # Pin both the wire and override ordering so either SDK stays covered.
         overrides = adapter._provider_scoped_extra_headers()
         assert type(overrides["user-agent"]).__name__ == "Omit"
-        assert overrides["User-Agent"] == "provider-value"
-        names = list(overrides)
-        assert names.index("User-Agent") > names.index("user-agent")
+        if explicit:
+            for name in explicit:
+                assert headers.get_list(name) == ["provider-value"]
+            assert overrides["User-Agent"] == "provider-value"
+            names = list(overrides)
+            assert names.index("User-Agent") > names.index("user-agent")
+        else:
+            assert not {"x-explicit", "x-case"}.intersection(headers)
+            assert headers.get("user-agent") != "ambient"
 
 
 def test_build_rejects_non_ascii_openrouter_api_key_before_transport() -> None:

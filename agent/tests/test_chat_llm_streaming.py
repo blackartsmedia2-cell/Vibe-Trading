@@ -231,12 +231,14 @@ def test_provider_stream_error_retryable_classification(
     assert err.retryable is expected
 
 
-@pytest.mark.parametrize("reason,filtered", [("content_filter", True), ("stop", False)])
-def test_content_filter_flag_follows_finish_reason(reason, filtered):
+@pytest.mark.parametrize("reason,content,filtered", [
+    ("content_filter", "", True), ("stop", "text", False),
+])
+def test_content_filter_flag_follows_finish_reason(reason, content, filtered):
     response = ChatLLM._parse_response(
-        AIMessageChunk(content="text", response_metadata={"finish_reason": reason})
+        AIMessageChunk(content=content, response_metadata={"finish_reason": reason})
     )
-    assert response.content == "text"
+    assert response.content == content
     assert response.finish_reason == reason
     assert response.content_filter_triggered is filtered
 
