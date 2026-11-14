@@ -52,10 +52,10 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
         for path, headers, body in seen:
             name = body["model"]
             assert path == f"/{name}/chat/completions"
-            assert headers["authorization"] == f"Bearer key-{name}"
-            assert headers["x-owner"] == name and "x-leaked" not in headers
-            assert headers["openai-organization"] == f"org-{name}"
-            assert headers["openai-project"] == f"project-{name}"
+            assert headers.get_all("Authorization") == [f"Bearer key-{name}"]
+            assert headers.get_all("X-Owner") == [name] and "X-Leaked" not in headers
+            assert headers.get_all("OpenAI-Organization") == [f"org-{name}"]
+            assert headers.get_all("OpenAI-Project") == [f"project-{name}"]
             assert body["temperature"] == (0.2 if name == "before" else 0.7)
         assert len(seen) == 2
 

@@ -110,11 +110,17 @@ describe("Settings with the claude-cli provider", () => {
   });
 
   it("offers registry model candidates before online discovery and saves the selection", async () => {
-    const provider = { ...providers.find((entry) => entry.name === "openrouter")!,
-      ...providerCatalog.find((entry) => entry.name === "openrouter")! };
+    const provider = {
+      ...providers.find((entry) => entry.name === "openrouter")!,
+      ...providerCatalog.find((entry) => entry.name === "openrouter")!,
+    };
     const candidate = provider.model_options!.find((model) => model !== provider.default_model)!;
-    const settings = llmSettings({ provider: provider.name, model_name: provider.default_model,
-      base_url: provider.default_base_url, providers: [provider] });
+    const settings = llmSettings({
+      provider: provider.name,
+      model_name: provider.default_model,
+      base_url: provider.default_base_url,
+      providers: [provider],
+    });
     apiMock.getLLMSettings.mockResolvedValue(settings);
     apiMock.updateLLMSettings.mockResolvedValue({ ...settings, model_name: candidate });
     render(<Settings />);
@@ -204,8 +210,6 @@ describe("Settings with the claude-cli provider", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
     expect(screen.queryByText("claude-sonnet-4-6")).not.toBeInTheDocument();
   });
-
-
 });
 
 

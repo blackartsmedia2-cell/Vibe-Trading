@@ -30,34 +30,40 @@ def provider_server():
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            received.append((self.path, {k.lower(): v for k, v in self.headers.items()}, body))
-            frame = {"id": "test", "created": 1, "model": body["model"]}
+            received.append((self.path, self.headers, body))
+            frame = {"id": "test", "created": 1, "model": f"served-{body['model']}"}
             message = {"role": "assistant", "content": body["model"]}
             if body.get("stream"):
                 frame["object"] = "chat.completion.chunk"
                 deltas, reason = [message], "stop"
                 if body.get("tools") and body["messages"][-1]["role"] != "tool":
-                    deltas = [
-                        {"tool_calls": [{"index": 0, "id": "call_quote", "type": "function",
-                                         "function": {"name": "quote", "arguments": '{"symbol":'}}]},
-                        {"tool_calls": [{"index": 0, "function": {"arguments": '"AAPL"}'}}]},
-                    ]
+                    tool_call = {
+                        "index": 0, "id": "call_quote", "type": "function",
+                        "function": {"name": "quote", "arguments": '{"symbol":'},
+                    }
+                    continuation = {"index": 0, "function": {"arguments": '"AAPL"}'}}
+                    deltas = [{"tool_calls": [tool_call]}, {"tool_calls": [continuation]}]
                     reason = "tool_calls"
-                events = [dict(frame, choices=[{"index": 0, "delta": d, "finish_reason": reason if not d else None}])
-                          for d in deltas + [{}]]
-                events.append(dict(frame, choices=[], usage={"prompt_tokens": 17, "completion_tokens": 4, "total_tokens": 21}))
-                payload = "".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n"
+                events = []
+                for delta in deltas + [{}]:
+                    choice = {"index": 0, "delta": delta, "finish_reason": reason if not delta else None}
+                    events.append(dict(frame, choices=[choice]))
+                usage = {"prompt_tokens": 17, "completion_tokens": 4, "total_tokens": 21}
+                events.append(dict(frame, choices=[], usage=usage))
+                chunks = [f"data: {json.dumps(event)}\n\n" for event in events] + ["data: [DONE]\n\n"]
                 content_type = "text/event-stream"
             else:
-                payload = json.dumps(dict(frame, object="chat.completion", choices=[
-                    {"index": 0, "finish_reason": "stop", "message": message}]))
+                choice = {"index": 0, "finish_reason": "stop", "message": message}
+                chunks = [json.dumps(dict(frame, object="chat.completion", choices=[choice]))]
                 content_type = "application/json"
-            encoded = payload.encode()
+            encoded = [chunk.encode() for chunk in chunks]
             self.send_response(200)
             self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Content-Length", str(sum(map(len, encoded))))
             self.end_headers()
-            self.wfile.write(encoded)
+            for chunk in encoded:
+                self.wfile.write(chunk)
+                self.wfile.flush()
 
     with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)

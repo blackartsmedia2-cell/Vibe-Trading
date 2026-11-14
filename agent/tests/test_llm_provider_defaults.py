@@ -58,7 +58,11 @@ def test_catalog_defaults_and_connections_reach_every_surface():
         assert get_llm_credentials(name, row["default_model"], environment={})["base_url"] == endpoint
     legacy = {p["provider"]: p for p in cli._PROVIDER_CHOICES}
     onboard = {p.key: p for p in ONBOARD_PROVIDERS}
-    assert {"nvidia", "siliconflow-cn", "siliconflow-global"} <= legacy.keys() & onboard.keys()
+    assert set(onboard) == {
+        "openrouter", "openai", "anthropic", "openai-codex", "deepseek", "opencode",
+        "siliconflow-cn", "siliconflow-global", "nvidia", "modelscope", "ollama",
+    }
+    assert {"openai", "nvidia", "siliconflow-cn", "siliconflow-global"} <= legacy.keys()
     for name, p in legacy.items():
         row = rows[name]
         assert (p["model"], p["base_url"], p["key_env"], p["base_env"]) == (
