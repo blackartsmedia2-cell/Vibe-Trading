@@ -19,6 +19,33 @@ def chat_with_adapter(adapter, model="test"):
         return ChatLLM(snapshot=snapshot)
 
 
+def assert_stream_tool_roundtrip(llm, model):
+    """Exercise fragmented arguments and a tool-result turn through the real SDK."""
+    parameters = {"type": "object", "properties": {"symbol": {"type": "string"}}, "required": ["symbol"]}
+    function = {"name": "quote", "description": "Read a quote", "parameters": parameters}
+    tools = [{"type": "function", "function": function}]
+    messages = [{"role": "user", "content": "Quote AAPL"}]
+    first = llm.stream_chat(messages, tools=tools)
+    assert len(first.tool_calls) == 1
+    assert first.tool_calls[0].id == "call_quote" and first.tool_calls[0].name == "quote"
+    assert first.tool_calls[0].arguments == {"symbol": "AAPL"}
+    assert first.finish_reason == "tool_calls"
+    tool_call = {
+        "id": "call_quote", "type": "function",
+        "function": {"name": "quote", "arguments": '{"symbol":"AAPL"}'},
+    }
+    followup = messages + [
+        {"role": "assistant", "content": "", "tool_calls": [tool_call]},
+        {"role": "tool", "tool_call_id": "call_quote", "content": '{"price":100}'},
+    ]
+    chunks = []
+    second = llm.stream_chat(followup, tools=tools, on_text_chunk=chunks.append)
+    assert second.content == "".join(chunks) == model
+    assert not second.tool_calls
+    assert second.usage_metadata["input_tokens"] == 17
+    assert second.response_model == f"served-{model}"
+
+
 @pytest.fixture
 def provider_server():
     """Serve JSON completions and fragmented SSE tool calls, recording requests."""
@@ -33,7 +60,41 @@ def provider_server():
             received.append((self.path, self.headers, body))
             frame = {"id": "test", "created": 1, "model": f"served-{body['model']}"}
             message = {"role": "assistant", "content": body["model"]}
-            if body.get("stream"):
+            if self.path.endswith("/messages"):
+                message = dict(frame, type="message", role="assistant", stop_reason="end_turn",
+                               content=[{"type": "text", "text": body["model"]}],
+                               usage={"input_tokens": 17, "output_tokens": 4})
+                if body.get("stream"):
+                    is_tool = body.get("tools") and not any(
+                        block.get("type") == "tool_result"
+                        for block in body["messages"][-1]["content"] if isinstance(block, dict)
+                    )
+                    if is_tool:
+                        block = {"type": "tool_use", "id": "call_quote", "name": "quote", "input": {}}
+                        deltas = [
+                            {"type": "input_json_delta", "partial_json": part}
+                            for part in ['{"symbol":', '"AAPL"}']
+                        ]
+                    else:
+                        block = {"type": "text", "text": ""}
+                        deltas = [{"type": "text_delta", "text": body["model"]}]
+                    events = [
+                        {"type": "message_start", "message": dict(
+                            message, content=[], stop_reason=None, usage={"input_tokens": 0, "output_tokens": 0},
+                        )},
+                        {"type": "content_block_start", "index": 0, "content_block": block},
+                        *[{"type": "content_block_delta", "index": 0, "delta": delta} for delta in deltas],
+                        {"type": "content_block_stop", "index": 0},
+                        {"type": "message_delta", "delta": {"stop_reason": "tool_use" if is_tool else "end_turn"},
+                         "usage": {"input_tokens": 17, "output_tokens": 4}},
+                        {"type": "message_stop"},
+                    ]
+                    chunks = [f"event: {event['type']}\ndata: {json.dumps(event)}\n\n" for event in events]
+                    content_type = "text/event-stream"
+                else:
+                    chunks = [json.dumps(message)]
+                    content_type = "application/json"
+            elif body.get("stream"):
                 frame["object"] = "chat.completion.chunk"
                 deltas, reason = [message], "stop"
                 if body.get("tools") and body["messages"][-1]["role"] != "tool":

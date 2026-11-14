@@ -475,7 +475,7 @@ class TestAnthropicNativeProvider:
     def test_unset_effort_stays_absent(self) -> None:
         kwargs = self._capture(self._env())
 
-        assert kwargs["reasoning_effort"] is None
+        assert kwargs.get("reasoning_effort") is None
 
     def test_temperature_is_omitted_when_effort_is_sent(self) -> None:
         """Effort enables adaptive thinking, which rejects temperature != 1.
@@ -509,7 +509,7 @@ class TestAnthropicNativeProvider:
             )
         )
 
-        assert kwargs["reasoning_effort"] is None
+        assert kwargs.get("reasoning_effort") is None
         assert kwargs["temperature"] == 0.0
 
     def test_an_unrecognised_model_is_not_sent_it(self) -> None:
@@ -526,14 +526,13 @@ class TestAnthropicNativeProvider:
             )
         )
 
-        assert kwargs["reasoning_effort"] is None
+        assert kwargs.get("reasoning_effort") is None
 
     def test_an_adapter_without_the_field_is_not_sent_it(self) -> None:
         """pyproject allows langchain-anthropic>=1.3.0, which predates the field.
 
-        ChatAnthropic sets `extra="ignore"`, so an older install would swallow
-        the kwarg silently — while the caller still paid the dropped
-        temperature. Sending neither is the honest outcome.
+        Older adapters can move unknown kwargs into the API payload. Omit
+        the field entirely and preserve the configured temperature.
         """
         captured: dict[str, Any] = {}
 
@@ -556,7 +555,7 @@ class TestAnthropicNativeProvider:
                 ):
                     build_llm()
 
-        assert captured["reasoning_effort"] is None
+        assert "reasoning_effort" not in captured
         assert captured["temperature"] == 0.0
 
     def test_the_installed_adapter_renders_effort_as_output_config(self) -> None:

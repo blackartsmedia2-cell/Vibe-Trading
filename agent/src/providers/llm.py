@@ -48,30 +48,33 @@ def _endpoint_model(client: Any) -> tuple[str, str, str]:
     )
 
 
-def _build_http_clients(proxy: str | None = None) -> tuple[Any, Any]:
+def _build_http_clients(proxy: str | None = None, *, sdk: Any = None) -> tuple[Any, Any]:
     """Build owned HTTPX clients with explicit proxy routing (None means direct).
 
-    Supplying an explicit transport prevents ``httpx.Client`` from installing
-    proxy mounts discovered from HTTP(S)_PROXY.  ``trust_env`` remains enabled
-    on the transports so SSL_CERT_FILE and SSL_CERT_DIR still work for private
-    certificate authorities.
+    Explicit transports prevent ambient proxy mounts while retaining
+    SSL_CERT_FILE / SSL_CERT_DIR. Match the SDK's httpx or httpx2 types;
+    SDK default-client wrappers may install ambient mounts even with trust_env=False.
 
     Args:
         proxy: Explicit proxy URL, or None to connect directly.
+        sdk: Optional SDK exposing its sync and async HTTP client factories.
 
     Returns:
-        A ``(sync_client, async_client)`` pair for the OpenAI SDK.
+        A ``(sync_client, async_client)`` pair.
 
     Raises:
         RuntimeError: If HTTPX is unavailable.
     """
     if httpx is None:
         raise RuntimeError("Explicit provider transport requires the httpx package")
-    sync_transport = httpx.HTTPTransport(proxy=proxy, trust_env=True)
-    async_transport = httpx.AsyncHTTPTransport(proxy=proxy, trust_env=True)
+    http = httpx
+    if sdk is not None and not issubclass(sdk.DefaultHttpxClient, httpx.Client):
+        http = import_module("httpx2")
+    sync_transport = http.HTTPTransport(proxy=proxy, trust_env=True)
+    async_transport = http.AsyncHTTPTransport(proxy=proxy, trust_env=True)
     return (
-        httpx.Client(transport=sync_transport),
-        httpx.AsyncClient(transport=async_transport),
+        http.Client(transport=sync_transport),
+        http.AsyncClient(transport=async_transport),
     )
 
 
@@ -899,6 +902,10 @@ def _build_native_deepseek(
     if not api_key:
         raise RuntimeError("Set DEEPSEEK_API_KEY (or legacy OPENAI_API_KEY) before using the native DeepSeek adapter")
     output_limit = snapshot.options.langchain_max_tokens
+    proxy = snapshot.environment.get("OPENAI_PROXY", "")
+    clients = _build_http_clients() if snapshot.options.vibe_trading_disable_http_proxy else (
+        _build_http_clients(proxy) if proxy else None
+    )
     client = chat_deepseek(
         model=model,
         temperature=temperature,
@@ -907,8 +914,12 @@ def _build_native_deepseek(
         callbacks=callbacks,
         api_key=api_key,
         base_url=base_url,
+        openai_proxy="" if clients else proxy,
+        **({"http_client": clients[0], "http_async_client": clients[1]} if clients else {}),
         **({"max_tokens": output_limit} if output_limit is not None else {}),
     )
+    # Unmarked LangChain transports can be shared across adapters.
+    client._vibe_owned_http_clients = clients or ()
     for sdk in (getattr(client, "root_client", None), getattr(client, "root_async_client", None)):
         if sdk is not None:
             sdk._custom_headers = {}
@@ -1154,11 +1165,9 @@ def _anthropic_supports_effort(model: str) -> bool:
 def _adapter_accepts_effort(chat_anthropic: type) -> bool:
     """Report whether the installed langchain-anthropic exposes the field.
 
-    ``ChatAnthropic`` is configured with ``extra="ignore"``, so an unknown
-    keyword is dropped in silence rather than raising. pyproject allows
-    ``langchain-anthropic>=1.3.0``, and ``reasoning_effort`` arrived later --
-    without this check, an older install would swallow the value while the
-    caller still paid the temperature cost below, which is the worst of both.
+    pyproject allows ``langchain-anthropic>=1.3.0``; ``reasoning_effort``
+    arrived later. Older adapters can forward unknown kwargs into the API
+    payload, so omit this field entirely unless the adapter declares it.
 
     Args:
         chat_anthropic: The resolved ``ChatAnthropic`` class.
@@ -1216,9 +1225,10 @@ def _build_anthropic(
         # Rendered by langchain-anthropic as output_config={'effort': ...}.
         # Without it, Fable 5 and Opus 5 run at the default effort however
         # LANGCHAIN_REASONING_EFFORT is set.
-        reasoning_effort=effort if use_effort else None,
+        **({"reasoning_effort": effort} if use_effort else {}),
         api_key=snapshot.api_key,
         base_url=snapshot.base_url,
+        anthropic_proxy=snapshot.environment.get("ANTHROPIC_PROXY"),
     )
     params = getattr(client, "_client_params", None)
     if isinstance(params, dict):
@@ -1230,7 +1240,18 @@ def _build_anthropic(
             for line in snapshot.environment.get("ANTHROPIC_CUSTOM_HEADERS", "").splitlines()
             if ":" in line
         )
-        headers = {**params.get("default_headers", {}), **{k.strip(): v.strip() for k, v in headers.items()}}
+        headers = {**(params.get("default_headers") or {}), **{k.strip(): v.strip() for k, v in headers.items()}}
+        sdk_module = import_module("anthropic")
+        proxy = snapshot.environment.get("ANTHROPIC_PROXY", "")
+        clients = _build_http_clients(sdk=sdk_module) if snapshot.options.vibe_trading_disable_http_proxy else (
+            _build_http_clients(proxy, sdk=sdk_module) if proxy else None
+        )
+        if clients:
+            # ChatAnthropic has no public HTTP-client fields. Populate its cached
+            # SDK clients before first use, retaining its normal request params.
+            client._client = sdk_module.Anthropic(**params, http_client=clients[0])
+            client._async_client = sdk_module.AsyncAnthropic(**params, http_client=clients[1])
+        client._vibe_owned_http_clients = clients or ()
         for sdk in (client._client, client._async_client):
             sdk.api_key, sdk.auth_token = params["api_key"], params["auth_token"]
             sdk._custom_headers = dict(headers)

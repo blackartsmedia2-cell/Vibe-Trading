@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import closing
 
 from tests.provider_helpers import provider_server as provider_server
+from tests.provider_helpers import assert_stream_tool_roundtrip
 
 from src.providers.registry import provider_catalog as catalog
 from src.providers.settings import resolve_config
@@ -57,26 +58,7 @@ def test_settings_to_real_sdk_stream_and_tool_followup(tmp_path, monkeypatch, pr
         provider = next(p for p in response.json()["providers"] if p["name"] == "ollama")
         assert provider["backend"] == "openai_compatible"
         with closing(ChatLLM()) as llm:
-            parameters = {"type": "object", "properties": {"symbol": {"type": "string"}}, "required": ["symbol"]}
-            function = {"name": "quote", "description": "Read a quote", "parameters": parameters}
-            tools = [{"type": "function", "function": function}]
-            messages = [{"role": "user", "content": "Quote AAPL"}]
-            first = llm.stream_chat(messages, tools=tools)
-            assert first.tool_calls[0].arguments == {"symbol": "AAPL"}
-            assert first.finish_reason == "tool_calls"
-            tool_call = {
-                "id": "call_quote", "type": "function",
-                "function": {"name": "quote", "arguments": '{"symbol":"AAPL"}'},
-            }
-            followup = messages + [
-                {"role": "assistant", "content": "", "tool_calls": [tool_call]},
-                {"role": "tool", "tool_call_id": "call_quote", "content": '{"price":100}'},
-            ]
-            chunks = []
-            second = llm.stream_chat(followup, tools=tools, on_text_chunk=chunks.append)
-            assert second.content == "".join(chunks) == "gateway-test"
-            assert second.usage_metadata["input_tokens"] == 17
-            assert second.response_model == "served-gateway-test"
+            assert_stream_tool_roundtrip(llm, "gateway-test")
     assert len(received) == 2
     assert all(path == "/v1/chat/completions" for path, _, _ in received)
     assert received[1][2]["messages"][-1]["tool_call_id"] == "call_quote"

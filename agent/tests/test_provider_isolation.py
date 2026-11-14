@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, closing
@@ -14,29 +15,41 @@ from src.providers import llm as llm_module
 from src.providers.chat import ChatLLM, ProviderStreamError
 from src.providers.settings import resolve_config
 from tests.provider_helpers import provider_server as provider_server
+from tests.provider_helpers import assert_stream_tool_roundtrip
 
 
 @pytest.mark.parametrize("explicit_proxy", [False, True])
-def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatch, provider_server, explicit_proxy):
+@pytest.mark.parametrize("provider", ["openai", "deepseek", "anthropic"])
+def test_old_and_new_clients_keep_their_own_connection_over_real_http(
+    monkeypatch, provider_server, explicit_proxy, provider,
+):
     """Defaults can change before construction and during concurrent requests."""
+    if provider != "openai":
+        pytest.importorskip(f"langchain_{provider}")
     base_url, seen = provider_server
+    api_prefix = "" if provider == "anthropic" else "/v1"
     with ExitStack() as stack:
         snapshots = [
             resolve_config(
                 environment={
-                    "LANGCHAIN_PROVIDER": "openai",
+                    "LANGCHAIN_PROVIDER": provider,
                     "LANGCHAIN_MODEL_NAME": name,
-                    "OPENAI_API_KEY": f"key-{name}",
-                    "OPENAI_BASE_URL": f"http://{name}.invalid/v1" if explicit_proxy else f"{base_url}/{name}",
+                    f"{provider.upper()}_API_KEY": f"key-{name}",
+                    f"{provider.upper()}_BASE_URL": (
+                        f"http://{name}.invalid{api_prefix}" if explicit_proxy else f"{base_url}/{name}"
+                    ),
+                    "ANTHROPIC_MAX_TOKENS": "128",
                     "LANGCHAIN_TEMPERATURE": str(temperature),
                     "LANGCHAIN_USE_RESPONSES_API": "false",
                     "OPENAI_CUSTOM_HEADERS": f"X-Owner: {name}",
+                    "ANTHROPIC_CUSTOM_HEADERS": f"X-Owner: {name}",
                     "OPENAI_ORG_ID": f"org-{name}",
                     "OPENAI_PROJECT_ID": f"project-{name}",
                     "TIMEOUT_SECONDS": "5",
                     "MAX_RETRIES": "0",
                     "VIBE_TRADING_DISABLE_HTTP_PROXY": "0" if explicit_proxy else "1",
                     "OPENAI_PROXY": base_url if explicit_proxy else "http://127.0.0.1:1",
+                    "ANTHROPIC_PROXY": base_url if explicit_proxy else "http://127.0.0.1:1",
                 }
             )
             for name, temperature in [("before", 0.2), ("after", 0.7)]
@@ -44,7 +57,9 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
         for key in ("OPENAI_API_KEY", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID"):
             monkeypatch.setenv(key, "unrelated-new-default")
         monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "X-Owner: leaked\nX-Leaked: secret")
-        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.setenv("ANTHROPIC_CUSTOM_HEADERS", "X-Leaked: secret")
+        monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "wrong-token")
+        for name in ("OPENAI_PROXY", "ANTHROPIC_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
             monkeypatch.setenv(name, "http://127.0.0.1:1")
         before_build = dict(os.environ)
         clients = [stack.enter_context(closing(ChatLLM(snapshot=snapshot))) for snapshot in snapshots]
@@ -52,15 +67,33 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(monkeypatc
         with ThreadPoolExecutor(2) as pool:
             replies = list(pool.map(lambda c: c.chat([{"role": "user", "content": "hello"}]), clients))
         assert {r.content for r in replies} == {"before", "after"}
+
+        async def request_async():
+            return await asyncio.gather(*(c._llm.ainvoke("hello") for c in clients))
+
+        assert {r.content for r in asyncio.run(request_async())} == {"before", "after"}
+        for client in clients:
+            assert_stream_tool_roundtrip(client, client.model_name)
         for path, headers, body in seen:
             name = body["model"]
-            assert path == (f"http://{name}.invalid/v1/chat/completions" if explicit_proxy else f"/{name}/chat/completions")
-            assert headers.get_all("Authorization") == [f"Bearer key-{name}"]
-            assert headers.get_all("X-Owner") == [name] and "X-Leaked" not in headers
-            assert headers.get_all("OpenAI-Organization") == [f"org-{name}"]
-            assert headers.get_all("OpenAI-Project") == [f"project-{name}"]
+            endpoint = "v1/messages" if provider == "anthropic" else "chat/completions"
+            assert path == (
+                f"http://{name}.invalid{api_prefix}/{endpoint}" if explicit_proxy else f"/{name}/{endpoint}"
+            )
+            if provider == "anthropic":
+                # Anthropic SDK 0.x sends x-api-key; newer majors send Bearer auth.
+                assert (headers.get_all("x-api-key"), headers.get_all("Authorization")) in [
+                    ([f"key-{name}"], None), (None, [f"Bearer key-{name}"]),
+                ]
+                assert "reasoning_effort" not in body and "auth_token" not in body
+            else:
+                assert headers.get_all("Authorization") == [f"Bearer key-{name}"]
+            assert "X-Leaked" not in headers
+            assert headers.get_all("X-Owner") == (None if provider == "deepseek" else [name])
+            assert headers.get_all("OpenAI-Organization") == ([f"org-{name}"] if provider == "openai" else None)
+            assert headers.get_all("OpenAI-Project") == ([f"project-{name}"] if provider == "openai" else None)
             assert body["temperature"] == (0.2 if name == "before" else 0.7)
-        assert len(seen) == 2
+        assert len(seen) == 8
 
 
 def test_snapshot_defaults_are_explicit_immutable_and_secret_free(monkeypatch):
