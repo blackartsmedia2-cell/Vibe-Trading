@@ -96,6 +96,29 @@ function effortOptions(): string[] {
   return Array.from(effortSelect().options).map((option) => option.value);
 }
 
+it.each(["opencode", "novita"])("saves %s credentials through the desktop store", async (name) => {
+  const provider = providerCatalog.find((entry) => entry.name === name)!;
+  const settings = llmSettings({ provider: name, providers: [provider], model_name: provider.default_model });
+  const desktop = { isDesktop: true, setCredential: vi.fn().mockResolvedValue({}), restartBackend: vi.fn().mockResolvedValue(true) };
+  vi.stubGlobal("vibeDesktop", desktop);
+  try {
+    apiMock.getLLMSettings.mockResolvedValue(settings);
+    apiMock.getDataSourceSettings.mockResolvedValue({});
+    apiMock.updateLLMSettings.mockResolvedValue(settings);
+    render(<Settings />);
+    const form = (await screen.findByDisplayValue(provider.label)).closest("form")!;
+    fireEvent.change(form.querySelector('input[type="password"]')!, { target: { value: "desktop-test-secret" } });
+    fireEvent.click(form.querySelector('button[type="submit"]')!);
+    await waitFor(() => expect(desktop.restartBackend).toHaveBeenCalled());
+    expect(desktop.setCredential).toHaveBeenCalledWith(provider.api_key_env, "desktop-test-secret");
+    expect(apiMock.updateLLMSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      provider: name, api_key: undefined, clear_api_key: false,
+    }));
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe("Settings with the claude-cli provider", () => {
   beforeEach(() => {
     vi.clearAllMocks();

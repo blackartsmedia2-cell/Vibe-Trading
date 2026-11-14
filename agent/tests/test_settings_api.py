@@ -255,20 +255,24 @@ def test_update_deepseek_settings_uses_exact_reported_payload(
     assert "DEEPSEEK_BASE_URL=https://api.deepseek.com/v1" in env_text
 
 
+@pytest.mark.parametrize("provider,key", [
+    ("deepseek", "DEEPSEEK_API_KEY"), ("opencode", "OPENCODE_API_KEY"), ("novita", "NOVITA_API_KEY"),
+])
 def test_desktop_secure_mode_never_persists_injected_llm_key(
     client: TestClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    key: str,
 ) -> None:
     monkeypatch.setenv("VIBE_TRADING_DESKTOP_SECURE_CREDENTIALS", "1")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "dpapi-decrypted-key")
+    monkeypatch.setenv(key, "dpapi-decrypted-key")
 
     response = client.put(
         "/settings/llm",
         json={
-            "provider": "deepseek",
-            "model_name": "deepseek-chat",
-            "base_url": "https://api.deepseek.com/v1",
+            "provider": provider,
+            "model_name": "test-model",
         },
     )
 
@@ -276,7 +280,7 @@ def test_desktop_secure_mode_never_persists_injected_llm_key(
     assert response.json()["api_key_configured"] is True
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
     assert "dpapi-decrypted-key" not in env_text
-    assert "DEEPSEEK_API_KEY=" in env_text
+    assert f"{key}=" in env_text
 
 
 @pytest.mark.parametrize(

@@ -108,6 +108,10 @@ layers. The packaging layer adds Electron Builder, an unsigned NSIS review
 artifact, a checksum-pinned CPython 3.12.10 base runtime, and `safeStorage`
 credential migration.
 
+The LLM credential allowlist comes from `agent/src/providers/llm_providers.json`,
+copied into `dist` at build time; new providers need no separate desktop entry.
+The store also retains the non-LLM `TUSHARE_TOKEN` and `GILDATA_TOKEN` credentials.
+
 It intentionally excludes:
 
 - update checks or release-feed configuration;
