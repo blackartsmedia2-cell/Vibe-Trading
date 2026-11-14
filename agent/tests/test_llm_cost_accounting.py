@@ -198,7 +198,7 @@ def test_goal_token_budget_stops_current_turn_and_blocks_unfunded_retry(tmp_path
 
 @pytest.mark.parametrize("limit", [None, 2048])
 def test_native_deepseek_forwards_configured_output_limit(monkeypatch, limit):
-    factory = Mock(return_value=object())
+    factory = Mock(return_value=SimpleNamespace(root_client=None, root_async_client=None))
     monkeypatch.setattr(_provider_adapters, "import_module", lambda name: SimpleNamespace(ChatDeepSeek=factory))
     _provider_adapters._build_native_deepseek(model="configured-model", temperature=0, snapshot=resolve_config(environment={"LANGCHAIN_PROVIDER": "deepseek", "DEEPSEEK_API_KEY": "test-key", "LANGCHAIN_MAX_TOKENS": str(limit or "")}))
     kwargs = factory.call_args.kwargs

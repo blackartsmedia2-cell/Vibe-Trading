@@ -239,6 +239,8 @@ def test_deepseek_native_adapter_is_used_when_available(monkeypatch) -> None:
     captured: dict = {}
 
     class _FakeChatDeepSeek:
+        root_client = root_async_client = None
+
         def __init__(self, **kwargs: object) -> None:
             captured.update(kwargs)
 

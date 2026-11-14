@@ -57,6 +57,12 @@ def provider_server():
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if "/redirect/" in self.path:
+                self.send_response(307)
+                self.send_header("Location", self.path.replace("/redirect/", "/"))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             received.append((self.path, self.headers, body))
             frame = {"id": "test", "created": 1, "model": f"served-{body['model']}"}
             message = {"role": "assistant", "content": body["model"]}

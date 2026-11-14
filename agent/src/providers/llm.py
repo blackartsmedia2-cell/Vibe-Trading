@@ -70,11 +70,16 @@ def _build_http_clients(proxy: str | None = None, *, sdk: Any = None) -> tuple[A
     http = httpx
     if sdk is not None and not issubclass(sdk.DefaultHttpxClient, httpx.Client):
         http = import_module("httpx2")
-    sync_transport = http.HTTPTransport(proxy=proxy, trust_env=True)
-    async_transport = http.AsyncHTTPTransport(proxy=proxy, trust_env=True)
+    limits = {"limits": sdk.DEFAULT_CONNECTION_LIMITS} if sdk else {}
+    sync_transport = http.HTTPTransport(proxy=proxy, trust_env=True, **limits)
+    async_transport = http.AsyncHTTPTransport(proxy=proxy, trust_env=True, **limits)
+    # Supplying transports bypasses the SDK's ambient proxy discovery while
+    # preserving its client defaults (notably Anthropic's redirects).
+    sync_cls = sdk.DefaultHttpxClient if sdk else http.Client
+    async_cls = sdk.DefaultAsyncHttpxClient if sdk else http.AsyncClient
     return (
-        http.Client(transport=sync_transport),
-        http.AsyncClient(transport=async_transport),
+        sync_cls(transport=sync_transport),
+        async_cls(transport=async_transport),
     )
 
 
@@ -902,9 +907,10 @@ def _build_native_deepseek(
     if not api_key:
         raise RuntimeError("Set DEEPSEEK_API_KEY (or legacy OPENAI_API_KEY) before using the native DeepSeek adapter")
     output_limit = snapshot.options.langchain_max_tokens
+    sdk_module = import_module("openai")
     proxy = snapshot.environment.get("OPENAI_PROXY", "")
-    clients = _build_http_clients() if snapshot.options.vibe_trading_disable_http_proxy else (
-        _build_http_clients(proxy) if proxy else None
+    clients = _build_http_clients(sdk=sdk_module) if snapshot.options.vibe_trading_disable_http_proxy else (
+        _build_http_clients(proxy, sdk=sdk_module) if proxy else None
     )
     client = chat_deepseek(
         model=model,
@@ -918,8 +924,8 @@ def _build_native_deepseek(
         **({"http_client": clients[0], "http_async_client": clients[1]} if clients else {}),
         **({"max_tokens": output_limit} if output_limit is not None else {}),
     )
-    # Unmarked LangChain transports can be shared across adapters.
-    client._vibe_owned_http_clients = clients or ()
+    # Unlike ChatOpenAI, ChatDeepSeek constructs per-instance SDK clients.
+    client._vibe_owned_http_clients = clients or (client.root_client, client.root_async_client)
     for sdk in (getattr(client, "root_client", None), getattr(client, "root_async_client", None)):
         if sdk is not None:
             sdk._custom_headers = {}

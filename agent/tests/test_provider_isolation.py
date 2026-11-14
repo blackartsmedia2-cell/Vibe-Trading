@@ -28,6 +28,7 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(
         pytest.importorskip(f"langchain_{provider}")
     base_url, seen = provider_server
     api_prefix = "" if provider == "anthropic" else "/v1"
+    redirect = "/redirect" if provider != "openai" else ""
     with ExitStack() as stack:
         snapshots = [
             resolve_config(
@@ -36,7 +37,7 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(
                     "LANGCHAIN_MODEL_NAME": name,
                     f"{provider.upper()}_API_KEY": f"key-{name}",
                     f"{provider.upper()}_BASE_URL": (
-                        f"http://{name}.invalid{api_prefix}" if explicit_proxy else f"{base_url}/{name}"
+                        f"http://{name}.invalid{redirect}{api_prefix}" if explicit_proxy else f"{base_url}{redirect}/{name}"
                     ),
                     "ANTHROPIC_MAX_TOKENS": "128",
                     "LANGCHAIN_TEMPERATURE": str(temperature),
@@ -94,6 +95,11 @@ def test_old_and_new_clients_keep_their_own_connection_over_real_http(
             assert headers.get_all("OpenAI-Project") == ([f"project-{name}"] if provider == "openai" else None)
             assert body["temperature"] == (0.2 if name == "before" else 0.7)
         assert len(seen) == 8
+        clients[0].close()
+        assert all(c.is_closed for c in clients[0]._llm._vibe_owned_http_clients)
+        assert clients[1].chat([{"role": "user", "content": "still open"}]).content == "after"
+        asyncio.run(clients[1].aclose())
+        assert all(c.is_closed for c in clients[1]._llm._vibe_owned_http_clients)
 
 
 def test_snapshot_defaults_are_explicit_immutable_and_secret_free(monkeypatch):
