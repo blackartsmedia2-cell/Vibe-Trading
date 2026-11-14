@@ -72,7 +72,8 @@ export class UpdateRecoveryJournal {
       ? "backend-stopped"
       : current.phase === "backend-stopped"
         ? "installer-launched"
-        : undefined;
+        // Only the caller receiving a spawn failure may retract handoff intent.
+        : "backend-stopped";
     if (nextPhase !== allowed) {
       throw new Error(`Invalid update phase transition: ${current.phase} -> ${nextPhase}`);
     }

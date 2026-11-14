@@ -86,6 +86,9 @@ verified -> backend-stopped -> installer-launched
 - `backend-stopped`: `stopForUpdate()` confirmed no owned PID or listener.
 - `installer-launched`: handoff intent is durable before spawning the installer.
   It may be running even if the previous process never recorded an acknowledgement.
+  Only an explicit spawn failure retracts it to `backend-stopped`, allowing
+  normal cleanup and backend restart; an interrupted/unknown handoff still
+  requires manual resolution.
 
 On the next application start, the journal is checked before starting Python.
 An uncertain installer handoff blocks an old backend from starting under file
@@ -215,3 +218,11 @@ tool trails and interrupted-attempt recovery. A hidden native Electron run
 through the actual main/preload entry showed the pending-installer error,
 retained the journal/artifact and did not start a backend. No new Mac UI or
 packaging feature was brought back for these checks.
+
+Follow-up recovery review: initial credential decryption failure exits the host
+so a repaired/unlocked store can be relaunched without an orphan single-instance
+lock. Decryption failure during backend restart uses the existing visible error
+and retry path. A native main/preload/backend run verified that recovery leaves
+configuration and ciphertext unchanged and starts a new backend. The compiled
+installer handoff also recovered from a real OS spawn rejection (EACCES), with
+release/signature transport simulated; signed Windows acceptance is still open.

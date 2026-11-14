@@ -168,18 +168,20 @@ for (const scenario of [
   { phase: "verified", disposition: "discarded-before-shutdown" },
   { phase: "backend-stopped", disposition: "interrupted-before-installer" },
   { phase: "installer-launched", disposition: "manual-intervention-required" },
+  { phase: "spawn-failed", disposition: "interrupted-before-installer" },
 ]) {
   const directory = await mkdtemp(path.join(testRoot, "recovery-"));
   const journal = new UpdateRecoveryJournal(directory);
   const stagedArtifact = path.join(directory, "update.exe");
   await writeFile(stagedArtifact, fixture);
   let attempt = await journal.begin(newAttempt("update.exe"));
-  if (scenario.phase === "backend-stopped" || scenario.phase === "installer-launched") {
+  if (scenario.phase !== "verified") {
     attempt = await journal.advance(attempt.attemptId, "backend-stopped");
   }
-  if (scenario.phase === "installer-launched") {
+  if (["installer-launched", "spawn-failed"].includes(scenario.phase)) {
     attempt = await journal.advance(attempt.attemptId, "installer-launched");
   }
+  if (scenario.phase === "spawn-failed") await journal.advance(attempt.attemptId, "backend-stopped");
   const recovery = await journal.recover("0.3.0", false);
   assert.equal(recovery.disposition, scenario.disposition);
   assert.equal(await exists(stagedArtifact), scenario.phase === "installer-launched");

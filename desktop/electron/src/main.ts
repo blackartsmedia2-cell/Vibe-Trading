@@ -54,6 +54,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   void app.whenReady().then(ready).catch((error) => {
     dialog.showErrorBox(desktopMessages.startupFailureTitle, errorText(error));
+    app.quit();
   });
 }
 
@@ -210,21 +211,20 @@ async function bootInternal(): Promise<void> {
     return;
   }
 
-  backend = new BackendManager({
-    appPath: app.getAppPath(),
-    resourcesPath: process.resourcesPath,
-    allowSourceDiscovery: !app.isPackaged,
-    logDirectory: app.getPath("logs"),
-    apiAuthKey,
-    messages: desktopMessages,
-    credentialEnvironment: requireCredentialStore().environment(),
-    onStatus: (message) => mainWindow?.webContents.send("desktop:status", message),
-    onUnexpectedExit: (message) => {
-      if (!quitting && !updateBusy) void reportBootError(message);
-    },
-  });
-
   try {
+    backend = new BackendManager({
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      allowSourceDiscovery: !app.isPackaged,
+      logDirectory: app.getPath("logs"),
+      apiAuthKey,
+      messages: desktopMessages,
+      credentialEnvironment: requireCredentialStore().environment(),
+      onStatus: (message) => mainWindow?.webContents.send("desktop:status", message),
+      onUnexpectedExit: (message) => {
+        if (!quitting && !updateBusy) void reportBootError(message);
+      },
+    });
     const url = await backend.start();
     // A target version is only reported complete after its backend starts.
     updateRecovery ??= await updateJournal.recover(app.getVersion()).catch((error) => ({
@@ -234,7 +234,7 @@ async function bootInternal(): Promise<void> {
     await mainWindow.loadURL(url);
     writeParentDeathSmokeRecord(url);
   } catch (error) {
-    await backend.stop();
+    await backend?.stop();
     await reportBootError(errorText(error));
   }
 }
@@ -338,13 +338,19 @@ async function installUpdate(): Promise<void> {
     await assertVerifiedUpdateArtifactUnchanged(artifactPath, staged.sha256);
     // Persist handoff intent first: a crash after spawn must not look safe to retry.
     await updateJournal.advance(attempt.attemptId, "installer-launched");
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(artifactPath!, ["--updated", "/S", "--force-run"], {
-        detached: true, stdio: "ignore", windowsHide: true,
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(artifactPath!, ["--updated", "/S", "--force-run"], {
+          detached: true, stdio: "ignore", windowsHide: true,
+        });
+        child.once("error", reject);
+        child.once("spawn", () => { launched = true; child.unref(); resolve(); });
       });
-      child.once("error", reject);
-      child.once("spawn", () => { launched = true; child.unref(); resolve(); });
-    });
+    } catch (error) {
+      // A rejected spawn is proof no installer started. A crash is not.
+      await updateJournal.advance(attempt.attemptId, "backend-stopped");
+      throw error;
+    }
   } catch (error) {
     appendFileSync(path.join(app.getPath("logs"), "updates.log"), `${new Date().toISOString()} ${errorText(error)}\n`);
     throw error;
